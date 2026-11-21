@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 12 100% 98.5%;
+    --foreground: 340 22% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 340 22% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 340 22% 14%;
+    --primary: 0 68% 54%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 6 70% 95%;
+    --secondary-foreground: 350 45% 28%;
+    --muted: 10 45% 96%;
+    --muted-foreground: 340 8% 47%;
+    --accent: 6 80% 94%;
+    --accent-foreground: 0 60% 40%;
+    --destructive: 0 68% 54%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 8 40% 91%;
+    --input: 8 40% 88%;
+    --ring: 0 68% 54%;
+    --radius: 1rem;
+    --blood: 0 68% 54%;
+    --blood-deep: 350 55% 30%;
+    --blood-soft: 6 85% 95%;
+    --ok: 158 36% 40%;
+    --peach: 24 90% 88%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-image:
+      radial-gradient(60rem 40rem at -10% -10%, hsl(6 90% 93% / 0.9), transparent 60%),
+      radial-gradient(50rem 35rem at 110% 0%, hsl(24 95% 92% / 0.7), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+    font-variation-settings: "SOFT" 100, "opsz" 96;
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: hsl(var(--blood-soft));
+    color: hsl(var(--blood-deep));
+  }
+}
+
+@layer components {
+  .soft-card {
+    @apply rounded-[28px] border border-white/70 bg-card;
+    box-shadow: 0 1px 2px hsl(350 40% 30% / 0.04), 0 18px 40px -18px hsl(0 60% 45% / 0.18);
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
