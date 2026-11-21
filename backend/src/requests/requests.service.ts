@@ -15,9 +15,9 @@ export class RequestsService {
   constructor(private prisma: PrismaService) {}
   // Attach outreach progress (donors coming / donated) so every response carries the same shape.
   private async withProgress<T extends PublicRequest>(requests: T[]) {
-    const rows = await this.prisma.outreach.groupBy({ by: ['requestId', 'status'], where: { requestId: { in: requests.map((r) => r.id) }, status: { in: [OutreachStatus.COMING, OutreachStatus.DONATED] } }, _count: true });
+    const rows = await this.prisma.outreach.groupBy({ by: ['requestId', 'status'], where: { requestId: { in: requests.map((r) => r.id) }, status: { in: [OutreachStatus.RESPONDED, OutreachStatus.COMING, OutreachStatus.DONATED] } }, _count: true });
     const count = (id: number, status: OutreachStatus) => rows.find((r) => r.requestId === id && r.status === status)?._count ?? 0;
-    return requests.map((r) => ({ ...r, coming: count(r.id, OutreachStatus.COMING), donated: count(r.id, OutreachStatus.DONATED) }));
+    return requests.map((r) => ({ ...r, responded: count(r.id, OutreachStatus.RESPONDED), coming: count(r.id, OutreachStatus.COMING), donated: count(r.id, OutreachStatus.DONATED) }));
   }
   private async one<T extends PublicRequest>(request: T) { return (await this.withProgress([request]))[0]; }
   async listActive() {
@@ -71,6 +71,34 @@ export class RequestsService {
       distanceKm: Math.round(distanceKm(request.latitude, request.longitude, donor.latitude, donor.longitude) * 10) / 10,
       email: donor.account.email, phone: decrypt(donor.phoneEncrypted),
     }));
+  }
+  // Donor raises a hand. Only for open, verified requests their blood can serve, and only while they're estimated eligible.
+  async respond(id: number, user: AuthUser) {
+    const request = await this.requestOrFail(id);
+    if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request is not open for responses');
+    const donor = await this.prisma.donor.findUnique({ where: { accountId: Number(user.sub) } });
+    if (!donor) throw new NotFoundException('Donor profile not found');
+    if (!compatibleDonorGroups(request.bloodGroup).includes(donor.bloodGroup)) throw new BadRequestException('Your blood group cannot be given for this request');
+    if (!donor.available) throw new BadRequestException('Turn on "Open to requests" first');
+    if (!eligible(donor.lastDonationAt)) throw new BadRequestException('You may not be eligible to donate yet, based on your last donation date');
+    const key = { requestId_donorId: { requestId: id, donorId: donor.id } };
+    const existing = await this.prisma.outreach.findUnique({ where: key });
+    // Don't overwrite what the coordinator already confirmed (coming / donated).
+    if (!existing) await this.prisma.outreach.create({ data: { requestId: id, donorId: donor.id, status: OutreachStatus.RESPONDED } });
+    else if (existing.status !== OutreachStatus.COMING && existing.status !== OutreachStatus.DONATED) await this.prisma.outreach.update({ where: key, data: { status: OutreachStatus.RESPONDED } });
+    return this.one(await this.prisma.bloodRequest.findUniqueOrThrow({ where: { id }, select: publicFields }));
+  }
+  async withdraw(id: number, user: AuthUser) {
+    const donor = await this.prisma.donor.findUnique({ where: { accountId: Number(user.sub) } });
+    if (!donor) throw new NotFoundException('Donor profile not found');
+    const { count } = await this.prisma.outreach.deleteMany({ where: { requestId: id, donorId: donor.id, status: OutreachStatus.RESPONDED } });
+    if (!count) throw new BadRequestException('Nothing to withdraw — if the coordinator already has you as coming, please tell them');
+    return this.one(await this.prisma.bloodRequest.findUniqueOrThrow({ where: { id }, select: publicFields }));
+  }
+  async myResponses(user: AuthUser) {
+    const donor = await this.prisma.donor.findUnique({ where: { accountId: Number(user.sub) } });
+    if (!donor) throw new NotFoundException('Donor profile not found');
+    return this.prisma.outreach.findMany({ where: { donorId: donor.id }, select: { requestId: true, status: true } });
   }
   async setOutreach(id: number, donorId: number, dto: OutreachDto) {
     const request = await this.requestOrFail(id);

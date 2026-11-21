@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowRight, Building2, Loader2, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
+import { ArrowRight, Building2, CheckCircle2, Hand, Loader2, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BloodChip, Btn, SPRING, SectionHead, StatusTag, UrgencyTag, VerifiedTag, fadeUp, popIn } from "@/components/bits"
-import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest } from "@/api"
+import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest, type OutreachStatus } from "@/api"
 import { CAN_RECEIVE, GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
 import { cn } from "@/lib/utils"
 
@@ -52,7 +52,13 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   const [tab, setTab] = useState<Tab>(readOnly ? "mine" : "active")
   const [open, setOpen] = useState(false)
   const [me, setMe] = useState<DonorProfile | null>(null)
-  useEffect(() => void (readOnly && api.me().then(setMe).catch((e) => toast.error(e.message))), [readOnly])
+  const [responses, setResponses] = useState<Record<number, OutreachStatus>>({})
+  useEffect(() => {
+    if (!readOnly) return
+    api.me().then(setMe).catch((e) => toast.error(e.message))
+    api.myResponses().then(setResponses).catch(() => {})
+  }, [readOnly])
+  const setResponse = (id: number, s: OutreachStatus | null) => setResponses(({ [id]: _, ...rest }) => (s ? { ...rest, [id]: s } : rest))
   const all = requests ?? []
   const active = all.filter((r) => statusOf(r, now) === "open")
   // Donors see verified needs only, nearest first; "mine" narrows to groups their blood can serve.
@@ -120,7 +126,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
         <motion.div layout className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {shown.map(({ r, km, canGive }, i) => (
-              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
+              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
             ))}
           </AnimatePresence>
           {shown.length === 0 && <p className="col-span-full py-16 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
@@ -172,7 +178,9 @@ async function share(r: LiveRequest, now: number) {
   }
 }
 
-function RequestCard({ r, i, now, km, canGive, readOnly, onChange, onMatch }: { r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean } & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
+function RequestCard({ r, i, now, km, canGive, response, onResponse, readOnly, onChange, onMatch }: {
+  r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean; response?: OutreachStatus; onResponse?: (s: OutreachStatus | null) => void
+} & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
   const [busy, setBusy] = useState(false)
   const status = statusOf(r, now)
   const isOpen = status === "open"
@@ -185,8 +193,10 @@ function RequestCard({ r, i, now, km, canGive, readOnly, onChange, onMatch }: { 
     try {
       onChange(await fn(r.id))
       toast.success(ok)
+      return true
     } catch (e) {
       toast.error((e as Error).message)
+      return false
     } finally {
       setBusy(false)
     }
@@ -232,11 +242,29 @@ function RequestCard({ r, i, now, km, canGive, readOnly, onChange, onMatch }: { 
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <VerifiedTag verified={r.verified} />
+        {!readOnly && isOpen && r.responded > 0 && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">✋ {r.responded} raised {r.responded === 1 ? "a hand" : "hands"}</span>}
         {readOnly && canGive === false && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Not your blood group</span>}
       </div>
 
+      {isOpen && readOnly && canGive && (
+        response === "coming" || response === "donated" ? (
+          <div className="mt-5 flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-ok">
+            <CheckCircle2 className="h-4 w-4" /> {response === "coming" ? "The coordinator is expecting you" : "Thank you for donating!"}
+          </div>
+        ) : response === "responded" ? (
+          <div className="mt-5 flex items-center justify-between gap-2 rounded-2xl bg-amber-50 px-4 py-2 text-sm">
+            <span className="font-medium text-amber-900">✋ You raised your hand</span>
+            <button disabled={busy} onClick={() => act(api.withdraw, "Withdrawn").then((ok) => ok && onResponse?.(null))} className="text-xs font-semibold text-muted-foreground hover:text-blood hover:underline">Withdraw</button>
+          </div>
+        ) : (
+          <Btn className="mt-5 w-full" disabled={busy} onClick={() => act(api.respond, "Thanks! The coordinator can see you raised your hand.").then((ok) => ok && onResponse?.("responded"))}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hand className="h-4 w-4" />} I can come
+          </Btn>
+        )
+      )}
+
       {isOpen && readOnly && (
-        <Btn variant="soft" className="mt-5 w-full" onClick={() => share(r, now)}>
+        <Btn variant="soft" className={cn("w-full", canGive ? "mt-2" : "mt-5")} onClick={() => share(r, now)}>
           <Share2 className="h-4 w-4" /> Share with family
         </Btn>
       )}

@@ -55,7 +55,7 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
   }
 
   const worked = outreach.filter((o) => !matches?.some((m) => m.donorId === o.donorId)).map((o) => ({ ...o, eligibility: "" }))
-  const list: Match[] = [...(matches ?? []), ...worked]
+  const list: Match[] = [...(matches ?? []), ...worked].sort((a, b) => Number(status[b.donorId] === "responded") - Number(status[a.donorId] === "responded"))
 
   const checks = [
     `Blood group can give to ${req.group} (${CAN_RECEIVE[req.group].join(", ")})`,
@@ -203,6 +203,7 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
 }
 
 const STATUS: Record<OutreachStatus, { label: string; tone: string }> = {
+  responded: { label: "✋ Raised hand", tone: "bg-amber-100 text-amber-900" },
   called: { label: "Called", tone: "bg-white text-foreground" },
   no_answer: { label: "No answer", tone: "bg-peach text-[#7a3a14]" },
   coming: { label: "Coming", tone: "bg-blood text-white" },
@@ -217,7 +218,7 @@ function StatusPicker({ value, onPick }: { value?: OutreachStatus; onPick: (s: O
         {value ? STATUS[value].label : "Mark"} <ChevronDown className="h-3 w-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="rounded-2xl p-1.5">
-        {(Object.keys(STATUS) as OutreachStatus[]).map((s) => (
+        {(Object.keys(STATUS) as OutreachStatus[]).filter((s) => s !== "responded").map((s) => (
           <DropdownMenuItem key={s} className="rounded-xl" onClick={() => onPick(s)}>
             {value === s && <Check className="h-3.5 w-3.5" />}{STATUS[s].label}
           </DropdownMenuItem>

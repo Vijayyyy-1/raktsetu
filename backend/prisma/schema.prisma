@@ -30,6 +30,7 @@ enum RequestUrgency {
 }
 
 enum OutreachStatus {
+  RESPONDED // donor raised their hand from the app
   CALLED
   NO_ANSWER
   COMING
