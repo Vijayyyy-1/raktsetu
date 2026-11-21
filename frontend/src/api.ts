@@ -80,6 +80,12 @@ export const api = {
       area: d.area, latitude: d.lat, longitude: d.lng, ...(d.lastDonationAt ? { lastDonationAt: d.lastDonationAt } : {}),
     })),
 
+  // Current account; donors also get a safe profile summary (no phone).
+  whoAmI: async () => {
+    const m = await call<{ email: string; role: "DONOR" | "COORDINATOR"; donor: { displayName: string } | null }>("GET", "/auth/me")
+    return { email: m.email, role: m.role.toLowerCase() as Role, name: m.donor?.displayName ?? null }
+  },
+
   listRequests: async () => (await call<ApiRequest[]>("GET", "/blood-requests")).map((r) => toRequest(r)),
   createRequest: async (r: { group: Group; units: number; hospital: string; area: string; lat: number; lng: number; urgency: Urgency; expiresAt: Date }) =>
     toRequest(await call<ApiRequest>("POST", "/blood-requests", {

@@ -12,13 +12,15 @@ import { Matches } from "@/screens/Matches"
 import { DonorHome } from "@/screens/DonorHome"
 import { cn } from "@/lib/utils"
 
+const initials = (s: string) => s.replace(/\(.*?\)|@.*/g, "").trim().split(/[\s._-]+/).map((w) => w[0]).join("").slice(0, 2) || "?"
+
 const NAV: Record<Role, { id: string; label: string }[]> = {
   coordinator: [{ id: "requests", label: "Requests" }],
   donor: [{ id: "home", label: "Me" }, { id: "requests", label: "Requests" }],
 }
 
 export default function App() {
-  const [session, setSession] = useState<{ role: Role; email: string } | null>(null)
+  const [session, setSession] = useState<{ role: Role; email: string; name?: string | null } | null>(null)
   const [registering, setRegistering] = useState(false)
   const [page, setPage] = useState("requests")
   const [matchId, setMatchId] = useState<number | null>(null)
@@ -43,6 +45,12 @@ export default function App() {
       setRequests((prev) => prev ?? [])
     }
   }, [])
+
+  // Confirm the token server-side and pick up the display name for the header.
+  useEffect(() => {
+    if (!session) return
+    api.whoAmI().then((me) => setSession((s) => s && { ...s, ...me })).catch(() => {})
+  }, [session?.email])
 
   useEffect(() => {
     if (!session) return
@@ -81,8 +89,11 @@ export default function App() {
                   ))}
                 </nav>
                 <button onClick={signOut} className="flex items-center gap-2 rounded-full p-1.5 text-sm font-semibold transition-colors hover:bg-muted sm:pr-4" aria-label="Sign out">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-blood-soft text-xs font-bold uppercase text-blood">{session.email.slice(0, 2)}</span>
-                  <span className="hidden capitalize sm:inline">{session.role}</span>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-blood-soft text-xs font-bold uppercase text-blood">{initials(session.name ?? session.email)}</span>
+                  <span className="hidden text-left leading-tight sm:block">
+                    <span className="block">{session.name?.replace(/\s*\(.*?\)/g, "") ?? session.email}</span>
+                    <span className="block text-[11px] font-medium capitalize text-muted-foreground">{session.role}</span>
+                  </span>
                   <LogOut className="hidden h-4 w-4 text-muted-foreground sm:block" />
                 </button>
               </div>
