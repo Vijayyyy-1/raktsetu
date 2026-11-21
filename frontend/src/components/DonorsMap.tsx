@@ -13,6 +13,7 @@ export const DOT: Record<OutreachStatus | "none", { color: string; label: string
   coming: { color: "#2563eb", label: "Coming" },
   donated: { color: "#3f8f6f", label: "Donated" },
   declined: { color: "#c9bdbb", label: "Declined" },
+  unavailable: { color: "#c9bdbb", label: "Committed elsewhere" },
 }
 
 /**

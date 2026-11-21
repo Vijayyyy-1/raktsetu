@@ -271,6 +271,7 @@ const STATUS: Record<OutreachStatus, { label: string; tone: string }> = {
   coming: { label: "Coming", tone: "bg-blood text-white" },
   declined: { label: "Declined", tone: "bg-muted text-muted-foreground line-through" },
   donated: { label: "Donated", tone: "bg-ok text-white" },
+  unavailable: { label: "Committed elsewhere", tone: "bg-muted text-muted-foreground" },
 }
 
 function StatusPicker({ value, onPick }: { value?: OutreachStatus; onPick: (s: OutreachStatus) => void }) {
@@ -280,7 +281,7 @@ function StatusPicker({ value, onPick }: { value?: OutreachStatus; onPick: (s: O
         {value ? STATUS[value].label : "Mark"} <ChevronDown className="h-3 w-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="rounded-2xl p-1.5">
-        {(Object.keys(STATUS) as OutreachStatus[]).filter((s) => s !== "responded").map((s) => (
+        {(Object.keys(STATUS) as OutreachStatus[]).filter((s) => s !== "responded" && s !== "unavailable") /* both are set by the system, not picked */.map((s) => (
           <DropdownMenuItem key={s} className="rounded-xl" onClick={() => onPick(s)}>
             {value === s && <Check className="h-3.5 w-3.5" />}{STATUS[s].label}
           </DropdownMenuItem>

@@ -36,6 +36,7 @@ enum OutreachStatus {
   COMING
   DECLINED
   DONATED
+  UNAVAILABLE // released automatically: the donor committed to (COMING) or donated at another request
 }
 
 enum RequestStatus {

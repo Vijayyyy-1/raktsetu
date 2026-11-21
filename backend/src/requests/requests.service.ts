@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BloodRequest, OutreachStatus, RequestStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
@@ -7,6 +7,7 @@ import { ALERT_KM, compatibleDonorGroups, distanceKm, eligible } from '../common
 import { sendPush } from '../common/push';
 import { CreateRequestDto, OutreachDto, UpdateRequestDto } from './requests.dto';
 
+const requestLabel = (id: number) => `RQ-${String(id).padStart(4, '0')}`;
 const publicFields = { id: true, bloodGroup: true, units: true, hospitalName: true, area: true, latitude: true, longitude: true, urgency: true, verified: true, expiresAt: true, createdAt: true, unitsReceived: true } as const;
 
 type PublicRequest = { id: number };
@@ -140,12 +141,20 @@ export class RequestsService {
     if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified before matching');
     const donors = await this.prisma.donor.findMany({ where: { available: true, bloodGroup: { in: compatibleDonorGroups(request.bloodGroup) }, account: { isActive: true, role: UserRole.DONOR }, ...(community ? { community: { equals: community, mode: 'insensitive' } } : {}) } });
     const now = new Date();
+    const busy = new Set((await this.committedElsewhere(donors.map((d) => d.id), id)).map((c) => c.donorId));
     return donors.map((donor) => ({ donor, distance: distanceKm(request.latitude, request.longitude, donor.latitude, donor.longitude) }))
-      .filter(({ donor, distance }) => eligible(donor.lastDonationAt, now) && distance <= maxDistanceKm)
+      .filter(({ donor, distance }) => !busy.has(donor.id) && eligible(donor.lastDonationAt, now) && distance <= maxDistanceKm)
       .sort((a, b) => a.distance - b.distance)
       .map(({ donor, distance }) => ({ donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, community: donor.community, latitude: approx(donor.latitude), longitude: approx(donor.longitude), distanceKm: Math.round(distance * 10) / 10, eligibility: 'Estimated eligible; must be confirmed with the donor and medical staff.' }));
   }
   // Contact details are released one donor at a time, on purpose, and logged — never in bulk with match results.
+  // A donor marked COMING on a live request is spoken for: they can't be booked or raise a hand elsewhere until that resolves.
+  private committedElsewhere(donorIds: number[], exceptRequestId: number) {
+    return this.prisma.outreach.findMany({
+      where: { donorId: { in: donorIds }, requestId: { not: exceptRequestId }, status: OutreachStatus.COMING, request: { status: RequestStatus.OPEN, expiresAt: { gt: new Date() } } },
+      select: { donorId: true, requestId: true },
+    });
+  }
   // The same rule matching uses: active, available, compatible group, estimated eligible.
   private isMatch(request: BloodRequest, donor: { available: boolean; bloodGroup: BloodRequest['bloodGroup']; lastDonationAt: Date | null; account: { isActive: boolean } }) {
     return donor.account.isActive && donor.available && compatibleDonorGroups(request.bloodGroup).includes(donor.bloodGroup) && eligible(donor.lastDonationAt);
@@ -198,6 +207,8 @@ export class RequestsService {
     if (!compatibleDonorGroups(request.bloodGroup).includes(donor.bloodGroup)) throw new BadRequestException('Your blood group cannot be given for this request');
     if (!donor.available) throw new BadRequestException('Turn on "Open to requests" first');
     if (!eligible(donor.lastDonationAt)) throw new BadRequestException('You may not be eligible to donate yet, based on your last donation date');
+    const [elsewhere] = await this.committedElsewhere([donor.id], id);
+    if (elsewhere) throw new ConflictException(`You're already expected at ${requestLabel(elsewhere.requestId)}. Once that's done or released you can raise your hand again.`);
     const key = { requestId_donorId: { requestId: id, donorId: donor.id } };
     const existing = await this.prisma.outreach.findUnique({ where: key });
     // Don't overwrite what the coordinator already confirmed (coming / donated).
@@ -229,8 +240,21 @@ export class RequestsService {
     // Adding someone to outreach exposes their contact in the outreach list, so new entries must be real matches.
     if (!before && !this.isMatch(request, donor)) throw new NotFoundException('This donor is not a match for this request');
     if (!before && request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is closed');
+    if (dto.status === OutreachStatus.COMING && before?.status !== OutreachStatus.COMING) {
+      const [elsewhere] = await this.committedElsewhere([donorId], id);
+      if (elsewhere) throw new ConflictException(`This donor is already coming to ${requestLabel(elsewhere.requestId)}`);
+    }
     await this.prisma.$transaction(async (tx) => {
       await tx.outreach.upsert({ where: key, update: { status: dto.status }, create: { requestId: id, donorId, status: dto.status } });
+      // Committing (COMING) or donating here releases the donor's other live requests, so those coordinators don't
+      // count or call someone who is spoken for. Donating also clears a COMING elsewhere. Nothing is restored on undo.
+      if ((dto.status === OutreachStatus.COMING || dto.status === OutreachStatus.DONATED) && before?.status !== dto.status) {
+        const release: OutreachStatus[] = [OutreachStatus.RESPONDED, OutreachStatus.CALLED, OutreachStatus.NO_ANSWER, ...(dto.status === OutreachStatus.DONATED ? [OutreachStatus.COMING] : [])];
+        await tx.outreach.updateMany({
+          where: { donorId, requestId: { not: id }, status: { in: release }, request: { status: RequestStatus.OPEN, expiresAt: { gt: new Date() } } },
+          data: { status: OutreachStatus.UNAVAILABLE },
+        });
+      }
       // "Donated" is a real donation: it goes into the donor's history and restarts their eligibility clock.
       // Moving away from "donated" (a mis-click) takes that entry back out.
       const wasDonated = before?.status === OutreachStatus.DONATED, isDonated = dto.status === OutreachStatus.DONATED;

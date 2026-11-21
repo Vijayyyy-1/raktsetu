@@ -567,3 +567,64 @@ describe('review fixes (regressions)', () => {
     assert.equal((await prisma.bloodRequest.findUniqueOrThrow({ where: { id } })).status, 'EXPIRED');
   });
 });
+
+/* ------------------------------------------------------------------ */
+describe('one donor, several requests (commitment)', () => {
+  const statusAt = async (reqId: number, donorId: number) => (await outreachOf(reqId)).find((o) => o.donorId === donorId)?.status;
+
+  test('hands on 3 requests → marked COMING at one: the other two are released as UNAVAILABLE', async () => {
+    const donor = await makeDonor(api, { name: 'multi', group: 'O_NEGATIVE', kmNorth: 0.6 });
+    const [a, b, c] = [await verified(), await verified(), await verified()];
+    for (const r of [a, b, c]) assert.equal((await api.post(`/blood-requests/${r}/respond`, undefined, donor.token)).status, 201);
+    assert.equal((await api.put(`/blood-requests/${a}/outreach/${donor.id}`, { status: 'COMING' }, coord)).status, 200);
+    assert.equal(await statusAt(b, donor.id), 'UNAVAILABLE');
+    assert.equal(await statusAt(c, donor.id), 'UNAVAILABLE');
+    assert.equal((await api.get(`/blood-requests/${b}`)).body.responded, 0); // no longer counted as a raised hand
+    const mine = (await api.get('/blood-requests/responses/me', donor.token)).body as any[];
+    assert.deepEqual(mine.filter((m) => [a, b, c].includes(m.requestId)).map((m) => m.status).sort(), ['COMING', 'UNAVAILABLE', 'UNAVAILABLE']);
+  });
+
+  test('while COMING elsewhere: no new hands (409), no double booking (409), hidden from other matches', async () => {
+    const donor = await makeDonor(api, { name: 'booked', group: 'O_NEGATIVE', kmNorth: 0.65 });
+    const [a, b] = [await verified(), await verified()];
+    await api.post(`/blood-requests/${a}/respond`, undefined, donor.token);
+    await api.put(`/blood-requests/${a}/outreach/${donor.id}`, { status: 'COMING' }, coord);
+    const hand = await api.post(`/blood-requests/${b}/respond`, undefined, donor.token);
+    assert.equal(hand.status, 409);
+    assert.match(hand.body.message, /RQ-\d{4}/);
+    assert.equal((await api.put(`/blood-requests/${b}/outreach/${donor.id}`, { status: 'COMING' }, coord)).status, 409);
+    assert.ok(!(await matchIds(b)).some((m) => m.donorId === donor.id));
+  });
+
+  test('DONATED at one request also releases a COMING at another', async () => {
+    const donor = await makeDonor(api, { name: 'gave', group: 'O_NEGATIVE', kmNorth: 0.7 });
+    const [x, y] = [await verified({ units: 2 }), await verified({ units: 2 })];
+    await api.put(`/blood-requests/${y}/outreach/${donor.id}`, { status: 'COMING' }, coord); // expected at y…
+    assert.equal((await api.put(`/blood-requests/${x}/outreach/${donor.id}`, { status: 'DONATED' }, coord)).status, 200); // …but gave at x
+    assert.equal(await statusAt(y, donor.id), 'UNAVAILABLE');
+    assert.equal((await api.get(`/blood-requests/${y}`)).body.coming, 0);
+    assert.equal((await api.post(`/blood-requests/${y}/respond`, undefined, donor.token)).status, 400); // just donated → not eligible
+  });
+
+  test('undoing the commitment frees the donor; released hands are not restored but can be raised again', async () => {
+    const donor = await makeDonor(api, { name: 'undo2', group: 'O_NEGATIVE', kmNorth: 0.75 });
+    const [a, b] = [await verified(), await verified()];
+    await api.post(`/blood-requests/${b}/respond`, undefined, donor.token);
+    await api.put(`/blood-requests/${a}/outreach/${donor.id}`, { status: 'COMING' }, coord);
+    assert.equal(await statusAt(b, donor.id), 'UNAVAILABLE');
+    await api.put(`/blood-requests/${a}/outreach/${donor.id}`, { status: 'DECLINED' }, coord);
+    assert.equal(await statusAt(b, donor.id), 'UNAVAILABLE'); // not silently restored
+    assert.ok((await matchIds(b)).some((m) => m.donorId === donor.id)); // matchable again
+    assert.equal((await api.post(`/blood-requests/${b}/respond`, undefined, donor.token)).status, 201);
+    assert.equal(await statusAt(b, donor.id), 'RESPONDED');
+  });
+
+  test('only live requests are released: closed requests keep their history', async () => {
+    const donor = await makeDonor(api, { name: 'history', group: 'O_NEGATIVE', kmNorth: 0.85 });
+    const [old, now] = [await verified(), await verified()];
+    await api.put(`/blood-requests/${old}/outreach/${donor.id}`, { status: 'CALLED' }, coord);
+    await api.post(`/blood-requests/${old}/cancel`, undefined, coord);
+    await api.put(`/blood-requests/${now}/outreach/${donor.id}`, { status: 'COMING' }, coord);
+    assert.equal(await statusAt(old, donor.id), 'CALLED');
+  });
+});

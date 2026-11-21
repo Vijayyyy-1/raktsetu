@@ -86,6 +86,8 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
     .filter((f) => f.km === undefined || f.km <= SHARE_KM)
     .sort((a, b) => (a.km ?? 0) - (b.km ?? 0))
   const mine = feed.filter((f) => f.canGive && (f.km === undefined || f.km <= NEAR_KM))
+  // The open request this donor is expected at (coordinator marked them coming); they can't raise a hand elsewhere meanwhile.
+  const committedTo = active.find((r) => responses[r.id] === "coming")?.id
   // Coordinator triage: tiles filter the open list; unverified first (they block matching), then soonest to close.
   const [filter, setFilter] = useState<Filter | null>(null)
   const triage = active
@@ -158,7 +160,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
         <motion.div layout className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {shown.map(({ r, km, canGive }, i) => (
-              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={change} onMatch={onMatch} />
+              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} committedTo={committedTo} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={change} onMatch={onMatch} />
             ))}
           </AnimatePresence>
           {shown.length === 0 && <p className="col-span-full py-12 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? `Nothing within ${NEAR_KM} km for your blood group right now — see Help spread the word.` : readOnly && tab === "mine" ? `No verified requests within ${NEAR_KM} km right now. We'll alert you when one comes in.` : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
@@ -226,8 +228,8 @@ export async function share(r: LiveRequest, now: number) {
   }
 }
 
-function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, readOnly, onChange, onMatch }: {
-  r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean; supply?: Supply; response?: OutreachStatus; onResponse?: (s: OutreachStatus | null) => void
+function RequestCard({ r, i, now, km, canGive, supply, response, committedTo, onResponse, readOnly, onChange, onMatch }: {
+  r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean; supply?: Supply; response?: OutreachStatus; committedTo?: number; onResponse?: (s: OutreachStatus | null) => void
 } & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -313,15 +315,22 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
           <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-ok">
             <CheckCircle2 className="h-4 w-4" /> {response === "coming" ? "The coordinator is expecting you" : "Thank you for donating!"}
           </div>
+        ) : committedTo !== undefined && committedTo !== r.id ? (
+          <div className="rounded-2xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+            You're expected at <b className="text-foreground">{requestLabel(committedTo)}</b>. Once that's done you can help here too.
+          </div>
         ) : response === "responded" ? (
           <div className="flex items-center justify-between gap-2 rounded-2xl bg-amber-50 px-4 py-2 text-sm">
             <span className="font-medium text-amber-900">✋ You raised your hand</span>
             <button disabled={busy} onClick={() => act(api.withdraw, "Withdrawn").then((ok) => ok && onResponse?.(null))} className="text-xs font-semibold text-muted-foreground hover:text-blood hover:underline">Withdraw</button>
           </div>
         ) : (
-          <Btn className="w-full" disabled={busy} onClick={() => act(api.respond, "Thanks! The coordinator can see you raised your hand.").then((ok) => ok && onResponse?.("responded"))}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hand className="h-4 w-4" />} I can come
-          </Btn>
+          <>
+            {response === "unavailable" && <p className="px-1 text-xs text-muted-foreground">Your earlier hand here was released when you committed to another request.</p>}
+            <Btn className="w-full" disabled={busy} onClick={() => act(api.respond, "Thanks! The coordinator can see you raised your hand.").then((ok) => ok && onResponse?.("responded"))}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hand className="h-4 w-4" />} I can come
+            </Btn>
+          </>
         )
       )}
 
