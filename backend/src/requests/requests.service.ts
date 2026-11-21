@@ -84,6 +84,31 @@ export class RequestsService {
     if (request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is not open');
     return this.one(await this.prisma.bloodRequest.update({ where: { id }, data: { verified: true, verifiedById: Number(user.sub), verifiedAt: new Date() }, select: publicFields }));
   }
+  // Aggregate outcomes for the last 30 days. Counts only, so it is safe to show publicly.
+  async impact() {
+    const since = new Date(Date.now() - 30 * 86400000);
+    const closed = await this.prisma.bloodRequest.findMany({
+      where: { verified: true, createdAt: { gte: since }, status: { in: [RequestStatus.FULFILLED, RequestStatus.EXPIRED] } },
+      select: { id: true, status: true, createdAt: true, updatedAt: true, unitsReceived: true },
+    });
+    const filled = closed.filter((r) => r.status === RequestStatus.FULFILLED);
+    const minutes = filled.map((r) => (r.updatedAt.getTime() - r.createdAt.getTime()) / 60000).sort((a, b) => a - b);
+    const median = minutes.length ? (minutes[(minutes.length - 1) >> 1] + minutes[minutes.length >> 1]) / 2 : null;
+    const [donated, raised, donors] = await Promise.all([
+      this.prisma.outreach.count({ where: { status: OutreachStatus.DONATED, request: { createdAt: { gte: since } } } }),
+      this.prisma.outreach.count({ where: { status: { in: [OutreachStatus.RESPONDED, OutreachStatus.COMING, OutreachStatus.DONATED] }, request: { createdAt: { gte: since } } } }),
+      this.prisma.donor.findMany({ where: { account: { isActive: true, role: UserRole.DONOR } }, select: { lastDonationAt: true, available: true } }),
+    ]);
+    return {
+      filled: filled.length,
+      fillRate: closed.length ? Math.round((filled.length / closed.length) * 100) : null,
+      medianFillMinutes: median === null ? null : Math.round(median),
+      unitsArranged: donated + filled.reduce((n, r) => n + r.unitsReceived, 0),
+      handsRaised: raised,
+      donors: donors.length,
+      eligibleNow: donors.filter((d) => d.available && eligible(d.lastDonationAt)).length,
+    };
+  }
   // Communities with at least one donor, for the coordinator's filter.
   async communities() {
     const rows = await this.prisma.donor.groupBy({ by: ['community'], where: { community: { not: null }, account: { isActive: true } }, _count: true, orderBy: { community: 'asc' } });

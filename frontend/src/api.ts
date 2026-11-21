@@ -53,6 +53,7 @@ export type LiveRequest = {
   closedAt?: number
   verifiedBy?: string | null
 }
+export type Impact = { filled: number; fillRate: number | null; medianFillMinutes: number | null; unitsArranged: number; handsRaised: number; donors: number; eligibleNow: number }
 export type Supply = { id: number; within10: number; within25: number }
 export type OutreachStatus = "responded" | "called" | "no_answer" | "coming" | "declined" | "donated"
 export type Outreach = { donorId: number; name: string; group: Group; area: string; lat: number; lng: number; km: number; email: string; phone: string; status: OutreachStatus; updatedAt: number }
@@ -115,6 +116,7 @@ export const api = {
   cancel: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/cancel`), "cancelled"),
   // Released one donor at a time and logged by the API.
   contact: (id: number, donorId: number) => call<Contact>("POST", `/blood-requests/${id}/matches/${donorId}/contact`),
+  impact: () => call<Impact>("GET", "/blood-requests/impact"),
   communities: () => call<{ name: string; donors: number }[]>("GET", "/blood-requests/communities"),
   matches: async (id: number, maxDistanceKm: number, community?: string) =>
     (await call<(Omit<Match, "name" | "group" | "km" | "lat" | "lng"> & { displayName: string; bloodGroup: ApiGroup; distanceKm: number; latitude: number; longitude: number })[]>("POST", `/blood-requests/${id}/matches?maxDistanceKm=${maxDistanceKm}${community ? `&community=${encodeURIComponent(community)}` : ""}`))

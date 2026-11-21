@@ -9,6 +9,7 @@ import { BloodChip, Btn, SPRING, SectionHead, StatusTag, UrgencyTag, VerifiedTag
 import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest, type OutreachStatus, type Supply } from "@/api"
 import { CAN_RECEIVE, GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
 import { RequestsMap } from "@/components/RequestsMap"
+import { ImpactStrip } from "@/components/ImpactStrip"
 import { cn } from "@/lib/utils"
 
 // Expiry is computed on read, same rule as the API.
@@ -119,6 +120,8 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
           <Stat i={3} big={active.reduce((n, r) => n + r.units, 0)} label="units still needed" tone="bg-emerald-50 text-ok" />
         </div>
       )}
+
+      {!readOnly && <ImpactStrip refreshKey={ids} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-fit rounded-full bg-white/70 p-1 shadow-sm">

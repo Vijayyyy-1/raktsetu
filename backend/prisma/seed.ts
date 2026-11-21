@@ -1,6 +1,7 @@
-import { PrismaClient, BloodGroup, RequestUrgency, UserRole } from '@prisma/client';
+import { PrismaClient, BloodGroup, OutreachStatus, RequestStatus, RequestUrgency, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { encrypt } from '../src/common/crypto';
+import { compatibleDonorGroups } from '../src/common/matching';
 
 const prisma = new PrismaClient();
 const demoDonors = [
@@ -93,6 +94,31 @@ async function main() {
     if (existing) await prisma.drive.update({ where: { id: existing.id }, data: d });
     else await prisma.drive.create({ data: { ...d, createdById: coordinator.id } });
   }
+  // Three weeks of closed requests so the impact strip and Closed tab have a story. Skipped once they exist.
+  const H = 3600000;
+  const history = [
+    { daysAgo: 19, hospitalName: 'Sahyadri Hospital, Deccan', area: 'Deccan', latitude: 18.5158, longitude: 73.8417, bloodGroup: BloodGroup.O_POSITIVE, units: 2, urgency: RequestUrgency.CRITICAL, fillH: 1.7, status: RequestStatus.FULFILLED, hands: 3 },
+    { daysAgo: 15, hospitalName: 'Jehangir Hospital', area: 'Sangamwadi', latitude: 18.5304, longitude: 73.8747, bloodGroup: BloodGroup.B_POSITIVE, units: 3, urgency: RequestUrgency.URGENT, fillH: 4.2, status: RequestStatus.FULFILLED, hands: 4 },
+    { daysAgo: 12, hospitalName: 'KEM Hospital', area: 'Rasta Peth', latitude: 18.5196, longitude: 73.8654, bloodGroup: BloodGroup.A_NEGATIVE, units: 1, urgency: RequestUrgency.CRITICAL, fillH: 2, status: RequestStatus.EXPIRED, hands: 0 },
+    { daysAgo: 9, hospitalName: 'Deenanath Mangeshkar Hospital', area: 'Erandwane', latitude: 18.5089, longitude: 73.8326, bloodGroup: BloodGroup.A_POSITIVE, units: 2, urgency: RequestUrgency.URGENT, fillH: 3.1, status: RequestStatus.FULFILLED, hands: 2 },
+    { daysAgo: 6, hospitalName: 'Ruby Hall Clinic', area: 'Sangamwadi', latitude: 18.5326, longitude: 73.8771, bloodGroup: BloodGroup.O_NEGATIVE, units: 1, urgency: RequestUrgency.CRITICAL, fillH: 0.9, status: RequestStatus.FULFILLED, hands: 1 },
+    { daysAgo: 3, hospitalName: 'Bharati Hospital', area: 'Katraj', latitude: 18.4574, longitude: 73.8508, bloodGroup: BloodGroup.B_POSITIVE, units: 2, urgency: RequestUrgency.ROUTINE, fillH: 6.5, status: RequestStatus.FULFILLED, hands: 3 },
+  ];
+  const allDonors = await prisma.donor.findMany({ select: { id: true, bloodGroup: true }, orderBy: { id: 'asc' } });
+  for (const h of history) {
+    const createdAt = new Date(Date.now() - h.daysAgo * 86400000);
+    if (await prisma.bloodRequest.findFirst({ where: { hospitalName: h.hospitalName, createdAt: { lt: new Date(Date.now() - 86400000) } } })) continue;
+    const closedAt = new Date(createdAt.getTime() + h.fillH * H);
+    const { daysAgo, fillH, hands, ...fields } = h;
+    const req = await prisma.bloodRequest.create({ data: {
+      ...fields, createdAt, updatedAt: closedAt, expiresAt: new Date(createdAt.getTime() + 24 * H),
+      verified: true, verifiedById: coordinator.id, verifiedAt: new Date(createdAt.getTime() + 0.2 * H), createdById: coordinator.id,
+      unitsReceived: h.status === RequestStatus.FULFILLED ? h.units : 0, // units arrived via donors who walked in
+    } });
+    const fits = allDonors.filter((d) => compatibleDonorGroups(h.bloodGroup).includes(d.bloodGroup)).slice(daysAgo % 3, daysAgo % 3 + hands);
+    await prisma.outreach.createMany({ data: fits.map((d, i) => ({ requestId: req.id, donorId: d.id, status: i === 0 ? OutreachStatus.COMING : OutreachStatus.RESPONDED, createdAt, updatedAt: closedAt })), skipDuplicates: true });
+  }
+
   console.log(`Seeded coordinator ${coordinatorEmail}, ${demoDonors.length + NAMES.length} fictional donors, demo request ${request.id}, and ${demoDrives.length} demo drives.`);
 }
 

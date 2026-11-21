@@ -11,6 +11,7 @@ export class RequestsController {
   @Get() list() { return this.service.listActive(); }
   @Get('closed') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   closed() { return this.service.listClosed(); }
+  @Get('impact') impact() { return this.service.impact(); }
   @Get('communities') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   communities() { return this.service.communities(); }
   @Get('supply') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
