@@ -1,15 +1,15 @@
 import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { CalendarPlus, Check, Clock, ExternalLink, Loader2, MapPin, Navigation, Phone, Plus, Search, Users } from "lucide-react"
+import { CalendarPlus, Check, Clock, ExternalLink, Loader2, MapPin, Navigation, Plus, Search, Users } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Btn, SPRING, SectionHead, fadeUp, popIn } from "@/components/bits"
-import { api, distanceKm, type Drive, type Eligibility, type Role } from "@/api"
-import { nearbyBloodBanks, placeLocation, searchPlaces, type BloodBank, type Suggestion } from "@/places"
+import { BloodBanksNear, ERAKTKOSH, ExtLink } from "@/components/BloodBanks"
+import { api, type Drive, type Eligibility, type Role } from "@/api"
+import { placeLocation, searchPlaces, type Suggestion } from "@/places"
 import { cn } from "@/lib/utils"
 
 const PUNE = { lat: 18.5204, lng: 73.8567 }
-const ERAKTKOSH_CAMPS = "https://eraktkosh.mohfw.gov.in/BLDAHIMS/bloodbank/campSchedule.cnt"
 
 export function Drives({ role }: { role: Role }) {
   const donor = role === "donor"
@@ -17,7 +17,6 @@ export function Drives({ role }: { role: Role }) {
   const [elig, setElig] = useState<Eligibility | null>(null)
   const [drives, setDrives] = useState<Drive[] | null>(null)
   const [mine, setMine] = useState<Set<number>>(new Set())
-  const [banks, setBanks] = useState<BloodBank[] | null>(null)
   const [creating, setCreating] = useState(false)
 
   // Donors: use their saved (approximate) location; coordinators: city centre.
@@ -31,7 +30,6 @@ export function Drives({ role }: { role: Role }) {
   useEffect(() => {
     if (!here) return
     api.drives(here).then(setDrives).catch((e) => (toast.error(e.message), setDrives([])))
-    nearbyBloodBanks(here).then(setBanks).catch(() => setBanks([]))
   }, [here])
 
   const replace = (d: Drive) => setDrives((ds) => (ds ?? []).map((x) => (x.id === d.id ? { ...d, distanceKm: x.distanceKm } : x)))
@@ -69,28 +67,25 @@ export function Drives({ role }: { role: Role }) {
         )}
       </section>
 
-      {/* 2 — Any day */}
-      <section>
-        <h2 className="text-3xl font-medium">Or donate <span className="italic text-blood">any day</span></h2>
-        <p className="mt-1 text-sm text-muted-foreground">Blood banks near {donor ? "you" : "Pune"} accept walk-in donors. Call ahead to check timings.</p>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {banks === null
-            ? [0, 1].map((i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-white/60" />)
-            : banks.length === 0
-              ? <p className="text-sm text-muted-foreground">Couldn't load nearby blood banks right now.</p>
-              : banks.map((b, i) => <BankRow key={b.id} i={i} b={b} from={here!} />)}
-        </div>
-      </section>
+      {/* 2 — Any day (donors only; coordinators see blood banks on the request matching screen) */}
+      {donor && here && (
+        <BloodBanksNear at={here} title={<>Or donate <span className="italic text-blood">any day</span></>} sub="Blood banks near you accept walk-in donors. Call ahead to check timings." />
+      )}
 
       {/* 3 — Official schedule */}
-      <a href={ERAKTKOSH_CAMPS} target="_blank" rel="noreferrer" className="soft-card group flex flex-wrap items-center gap-5 p-6 transition-transform hover:-translate-y-0.5">
+      <a href={ERAKTKOSH.camps} target="_blank" rel="noreferrer" className="soft-card group flex flex-wrap items-center gap-5 p-6 transition-transform hover:-translate-y-0.5">
         <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-blood-soft text-blood"><Search className="h-6 w-6" /></div>
         <div className="min-w-0 flex-1">
-          <div className="font-display text-xl font-medium">See all government blood donation camps</div>
-          <div className="text-sm text-muted-foreground">The national e-RaktKosh portal (Ministry of Health) lists camps by state, district and date — many allow online pre-registration.</div>
+          <div className="font-display text-xl font-medium">{donor ? "See all government blood donation camps" : "Planning a drive? Check government camps first"}</div>
+          <div className="text-sm text-muted-foreground">
+            {donor
+              ? "The national e-RaktKosh portal (Ministry of Health) lists camps by state, district and date — many allow online pre-registration."
+              : "Search e-RaktKosh by district and date so your drive doesn't clash with a government camp nearby."}
+          </div>
         </div>
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-blood">Open e-RaktKosh <ExternalLink className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></span>
       </a>
+      {!donor && <p className="-mt-8 px-2 text-sm text-muted-foreground">Short on a blood group? <ExtLink href={ERAKTKOSH.stock}>Check live blood stock on e-RaktKosh</ExtLink></p>}
 
       {!donor && <NewDriveDialog open={creating} onOpenChange={setCreating} onCreated={(d) => setDrives((ds) => [...(ds ?? []), d].sort((a, b) => a.startsAt - b.startsAt))} />}
     </motion.div>
@@ -158,23 +153,6 @@ function DriveCard({ d, i, donor, going, elig, onToggle }: { d: Drive; i: number
         <a href={`https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}`} target="_blank" rel="noreferrer" className="grid h-10 w-10 place-items-center rounded-full bg-muted transition-colors hover:bg-secondary" aria-label="Directions" title="Directions"><Navigation className="h-4 w-4" /></a>
       </div>
     </motion.article>
-  )
-}
-
-function BankRow({ b, i, from }: { b: BloodBank; i: number; from: { lat: number; lng: number } }) {
-  return (
-    <motion.div {...popIn(i)} className="soft-card flex items-center gap-4 p-4">
-      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blood-soft font-display font-semibold text-blood">{Math.round(distanceKm(from.lat, from.lng, b.lat, b.lng) * 10) / 10}<span className="-mt-1 text-[9px]">km</span></div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-semibold">{b.name}</span>
-          {b.openNow !== undefined && <span className={cn("pill shrink-0 py-0.5", b.openNow ? "bg-emerald-50 text-ok" : "bg-muted text-muted-foreground")}>{b.openNow ? "Open now" : "Closed"}</span>}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">{b.address}</div>
-      </div>
-      {b.phone && <a href={`tel:${b.phone}`} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted hover:bg-secondary" aria-label={`Call ${b.name}`}><Phone className="h-4 w-4" /></a>}
-      <a href={b.mapsUrl} target="_blank" rel="noreferrer" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted hover:bg-secondary" aria-label={`Open ${b.name} in Google Maps`}><Navigation className="h-4 w-4" /></a>
-    </motion.div>
   )
 }
 

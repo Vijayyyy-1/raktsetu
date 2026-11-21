@@ -12,13 +12,14 @@ import { Register } from "@/screens/Register"
 import { Requests } from "@/screens/Requests"
 import { Matches } from "@/screens/Matches"
 import { DonorHome } from "@/screens/DonorHome"
+import { Drives } from "@/screens/Drives"
 import { cn } from "@/lib/utils"
 
 const initials = (s: string) => s.replace(/\(.*?\)|@.*/g, "").trim().split(/[\s._-]+/).map((w) => w[0]).join("").slice(0, 2) || "?"
 
 const NAV: Record<Role, { id: string; label: string }[]> = {
-  coordinator: [{ id: "requests", label: "Requests" }],
-  donor: [{ id: "home", label: "Me" }, { id: "requests", label: "Requests" }],
+  coordinator: [{ id: "requests", label: "Requests" }, { id: "drives", label: "Drives" }],
+  donor: [{ id: "home", label: "Me" }, { id: "requests", label: "Requests" }, { id: "drives", label: "Drives" }],
 }
 
 export default function App() {
@@ -77,6 +78,14 @@ export default function App() {
       toast.error(loginErrorText(e))
     }
   }
+  // Dev only: ?demo=donor&page=drives (or ?demo=coordinator&match=1) signs in with a demo account and opens a page (screenshots, rehearsals).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const q = new URLSearchParams(location.search)
+    const role = q.get("demo") as Role | null
+    if (role === "donor" || role === "coordinator") demo(role).then(() => (q.get("page") && setPage(q.get("page")!), q.get("match") && setMatchId(Number(q.get("match")))))
+  }, [])
+
   const matchReq = requests?.find((r) => r.id === matchId)
 
   return (
@@ -96,9 +105,9 @@ export default function App() {
         ) : (
           <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen">
             <header className="sticky top-0 z-40 px-4 pt-4 sm:px-6">
-              <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 rounded-full border border-white/70 bg-white/70 pl-6 pr-2 shadow-[0_10px_30px_-18px_hsl(0_60%_40%/0.35)] backdrop-blur-xl">
+              <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 rounded-full border border-blood/10 bg-white/95 pl-6 pr-2 shadow-[0_1px_2px_hsl(350_40%_30%/0.06),0_12px_32px_-14px_hsl(0_60%_40%/0.35)] backdrop-blur-xl">
                 <Logo />
-                <nav className="ml-auto flex gap-1 rounded-full bg-muted/70 p-1 sm:ml-6 sm:mr-auto">
+                <nav className="ml-auto flex gap-1 rounded-full bg-secondary p-1 sm:ml-6 sm:mr-auto">
                   {NAV[session.role].map((n) => (
                     <button
                       key={n.id}
@@ -128,6 +137,8 @@ export default function App() {
                   <Matches key={`m-${matchReq.id}`} req={matchReq} now={now} onBack={() => setMatchId(null)} onChange={upsert} />
                 ) : page === "requests" ? (
                   <Requests key={`r-${session.role}`} requests={requests} now={now} onChange={upsert} onRefresh={load} onMatch={setMatchId} readOnly={session.role === "donor"} />
+                ) : page === "drives" ? (
+                  <Drives key={`d-${session.role}`} role={session.role} />
                 ) : (
                   <DonorHome key="home" requests={requests} now={now} />
                 )}

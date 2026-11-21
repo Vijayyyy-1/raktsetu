@@ -9,6 +9,7 @@ import { BloodChip, Btn, Drop, EstimateNote, SPRING, UrgencyTag, VerifiedTag, fa
 import { api, requestLabel, type LiveRequest, type Match, type Outreach, type OutreachStatus } from "@/api"
 import { CAN_RECEIVE, maskPhone } from "@/data"
 import { Countdown, Progress } from "./Requests"
+import { BloodBanksNear, ERAKTKOSH, ExtLink } from "@/components/BloodBanks"
 import { cn } from "@/lib/utils"
 
 const MAX_KM = 50
@@ -167,6 +168,15 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
           )}
         </div>
       </div>
+
+      {/* Backup plan: if donors aren't enough, the coordinator can source from a blood bank. */}
+      <BloodBanksNear
+        at={{ lat: req.lat, lng: req.lng }}
+        className={cn("rounded-[28px] p-6", matches !== null && matches.length < req.units ? "bg-blood-soft" : "bg-white/50")}
+        title={matches !== null && matches.length < req.units ? <>Not enough donors? <span className="italic text-blood">Call a blood bank</span></> : <>Backup: blood banks near <span className="italic text-blood">{req.hospital}</span></>}
+        sub={`Ask if they have ${req.group} in stock before the request runs out of time.`}
+        footer={<p className="mt-4 text-sm text-muted-foreground">Or <ExtLink href={ERAKTKOSH.stock}>check live blood stock on e-RaktKosh</ExtLink></p>}
+      />
 
       <Dialog open={!!reveal} onOpenChange={(o) => !o && setReveal(null)}>
         <DialogContent className="rounded-[32px] border-0 p-8">
