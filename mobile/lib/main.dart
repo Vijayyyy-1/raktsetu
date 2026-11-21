@@ -11,13 +11,14 @@ final navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Reads android/app/google-services.json; the app still runs if Firebase can't start.
-  try {
-    await Firebase.initializeApp();
+  // Reads android/app/google-services.json; not awaited so the first frame isn't held up. The app still runs if Firebase can't start.
+  firebaseReady = Firebase.initializeApp().then((_) {
     listenForPush();
-  } catch (e) {
+    return true;
+  }).catchError((Object e) {
     debugPrint('Firebase unavailable: $e');
-  }
+    return false;
+  });
   // Expired/revoked token: drop back to login from anywhere.
   Api.onUnauthorized = () => navigatorKey.currentState?.pushAndRemoveUntil(fade(const LoginScreen()), (_) => false);
   runApp(const RaktSethuApp());

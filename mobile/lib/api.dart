@@ -38,6 +38,17 @@ class Session {
   final String email, role; // role: donor | coordinator
   final String? name;
   bool get isDonor => role == 'donor';
+  Map<String, dynamic> toJson() => {'email': email, 'role': role, 'name': name};
+  static Session fromJson(Map<String, dynamic> j) => Session(j['email'], j['role'], j['name']);
+}
+
+/// Seconds-since-epoch expiry from a JWT's payload, or 0 if unreadable. Not verified: the server still checks every call.
+int jwtExpiry(String token) {
+  try {
+    return jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(token.split('.')[1]))))['exp'] as int;
+  } catch (_) {
+    return 0;
+  }
 }
 
 class BloodRequest {
@@ -122,23 +133,28 @@ class Api {
   /* ---------- session ---------- */
   static Future<Session> _start(Map<String, dynamic> r) async {
     _token = r['accessToken'];
-    await _storage.write(key: 'token', value: _token);
-    return whoAmI();
+    final s = await whoAmI();
+    // Token and who it belongs to in one key, so launch needs a single storage read and no network.
+    await _storage.write(key: 'session', value: jsonEncode({'token': _token, ...s.toJson()}));
+    return s;
   }
 
+  /// Offline restore: the saved session if its token is still valid for a minute or more, else null (go to login).
   static Future<Session?> restore() async {
-    _token = await _storage.read(key: 'token');
-    if (_token == null) return null;
-    try {
-      return await whoAmI();
-    } on ApiError {
+    final raw = await _storage.read(key: 'session');
+    if (raw == null) return null;
+    final j = jsonDecode(raw) as Map<String, dynamic>;
+    if (jwtExpiry(j['token']) * 1000 < DateTime.now().add(const Duration(minutes: 1)).millisecondsSinceEpoch) {
+      await signOut();
       return null;
     }
+    _token = j['token'];
+    return Session.fromJson(j);
   }
 
   static Future<void> signOut() async {
     _token = null;
-    await _storage.delete(key: 'token');
+    await _storage.delete(key: 'session');
   }
 
   static Future<Session> login(String email, String password) async =>

@@ -6,6 +6,9 @@ import 'ui.dart';
 
 final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
+/// Firebase starts in the background so it never delays the first frame; push code awaits this.
+late final Future<bool> firebaseReady;
+
 /// Set when the donor opens a request notification; the shell switches to Requests and clears it.
 /// A flag (not an event) so a tap that cold-starts the app is still seen once the shell exists.
 final openRequests = ValueNotifier<bool>(false);
@@ -15,6 +18,7 @@ bool _listening = false, _refreshing = false;
 /// Registers this phone for blood-request pushes. Donors only; safe to call on every sign-in.
 Future<void> registerForPush() async {
   try {
+    if (!await firebaseReady) return;
     final fm = FirebaseMessaging.instance;
     final perm = await fm.requestPermission(); // Android 13+ shows the system prompt
     if (perm.authorizationStatus == AuthorizationStatus.denied) return;
