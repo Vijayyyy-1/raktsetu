@@ -145,6 +145,16 @@ To update the last donation date, include `lastDonationAt` as an ISO date-time s
 
 The eligibility response contains `eligible`, `nextEligibleAt`, `reason`, and `rule`. Donor profile responses contain profile fields and the donor's decrypted phone number; do not place that response in shared or public state.
 
+### Donor registry (coordinators)
+
+Coordinator-only. Responses never include phone, email or exact location; contact details are released per donor through a request's matches.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /v1/donors?q=&group=&community=&status=&page=&pageSize=` | Search the registry. `status` is `eligible`, `soon` (eligible within 14 days), `resting`, `paused` or `inactive` |
+| `GET /v1/donors/stats` | Totals, ready now, ready soon, first-timers, paused, and ready vs total by blood group and community |
+| `PATCH /v1/donors/:id/active` | `{ "active": false }` deactivates a fake or abusive account (no sign-in, never matched); `true` reactivates. Audit-logged |
+
 ### Blood requests and matching
 
 | Method and path | Access | Purpose |

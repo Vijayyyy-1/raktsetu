@@ -88,6 +88,12 @@ const toDonor = (d: ApiDonor): DonorProfile => ({ id: d.id, name: d.displayName,
 type TokenResponse = { accessToken: string; user: { id: number; email: string; role: "DONOR" | "COORDINATOR" } }
 const session = (r: TokenResponse) => ((token = r.accessToken), { email: r.user.email, role: r.user.role.toLowerCase() as Role })
 
+export type RegistryStatus = "eligible" | "soon" | "resting" | "paused" | "inactive"
+export type RegistryDonor = { id: number; name: string; group: Group; community: string | null; area: string; status: RegistryStatus; nextEligibleAt: string | null; donations: number; firstTimer: boolean; joinedAt: string }
+export type RegistryStats = { total: number; eligibleNow: number; soon: number; paused: number; firstTimers: number; inactive: number; byGroup: { group: Group; total: number; eligible: number }[]; byCommunity: { community: string; total: number; eligible: number }[] }
+type ApiRegistryDonor = Omit<RegistryDonor, "group"> & { bloodGroup: ApiGroup }
+const toRegistryDonor = ({ bloodGroup, ...d }: ApiRegistryDonor): RegistryDonor => ({ ...d, group: toGroup(bloodGroup) })
+
 export const api = {
   login: async (email: string, password: string) => session(await call<TokenResponse>("POST", "/auth/login", { email, password })),
   register: async (d: { email: string; password: string; displayName: string; group: Group; phone: string; area: string; lat: number; lng: number; lastDonationAt?: string; community?: string }) =>
@@ -147,6 +153,19 @@ export const api = {
   },
   markAlertsSeen: () => call<{ unread: number }>("POST", "/donors/me/alerts/seen"),
   eligibility: () => call<Eligibility>("GET", "/donors/me/eligibility"),
+
+  // Coordinator donor registry (no contact details — those come per donor through a request's matches)
+  registry: async (q: { q?: string; group?: Group; community?: string; status?: RegistryStatus; page?: number; pageSize?: number }) => {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries({ ...q, group: q.group && fromGroup(q.group) })) if (v !== undefined && v !== "") params.set(k, String(v))
+    const r = await call<{ total: number; page: number; pageSize: number; items: ApiRegistryDonor[] }>("GET", `/donors?${params}`)
+    return { ...r, items: r.items.map(toRegistryDonor) }
+  },
+  registryStats: async (): Promise<RegistryStats> => {
+    const s = await call<Omit<RegistryStats, "byGroup"> & { byGroup: { group: ApiGroup; total: number; eligible: number }[] }>("GET", "/donors/stats")
+    return { ...s, byGroup: s.byGroup.map((g) => ({ ...g, group: toGroup(g.group) })) }
+  },
+  setDonorActive: async (id: number, active: boolean) => toRegistryDonor(await call<ApiRegistryDonor>("PATCH", `/donors/${id}/active`, { active })),
 
   // Blood donation drives / camps
   drives: async (near?: { lat: number; lng: number }) => (await call<ApiDrive[]>("GET", `/drives${near ? `?lat=${near.lat}&lng=${near.lng}` : ""}`)).map(toDrive),

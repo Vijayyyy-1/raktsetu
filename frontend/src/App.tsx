@@ -15,12 +15,13 @@ import { Matches } from "@/screens/Matches"
 import { DonorHome } from "@/screens/DonorHome"
 import { AlertBell } from "@/components/AlertBell"
 import { Drives } from "@/screens/Drives"
+import { Donors } from "@/screens/Donors"
 import { cn } from "@/lib/utils"
 
 const initials = (s: string) => s.replace(/\(.*?\)|@.*/g, "").trim().split(/[\s._-]+/).map((w) => w[0]).join("").slice(0, 2) || "?"
 
 const NAV: Record<Role, { id: string; label: string }[]> = {
-  coordinator: [{ id: "requests", label: "Requests" }, { id: "drives", label: "Drives" }],
+  coordinator: [{ id: "requests", label: "Requests" }, { id: "donors", label: "Donors" }, { id: "drives", label: "Drives" }],
   donor: [{ id: "home", label: "Me" }, { id: "requests", label: "Requests" }, { id: "drives", label: "Drives" }],
 }
 
@@ -147,6 +148,8 @@ export default function App() {
                   <Matches key={`m-${matchReq.id}`} req={matchReq} now={now} onBack={() => setMatchId(null)} onChange={upsert} />
                 ) : page === "requests" ? (
                   <Requests key={`r-${session.role}`} requests={requests} now={now} onChange={upsert} onRefresh={load} onMatch={setMatchId} readOnly={session.role === "donor"} />
+                ) : page === "donors" ? (
+                  <Donors key="donors" />
                 ) : page === "drives" ? (
                   <Drives key={`d-${session.role}`} role={session.role} />
                 ) : (
