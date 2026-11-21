@@ -208,12 +208,16 @@ function Stat({ i, big, label, tone, active, onClick }: { i: number; big: number
 
 type Tab = "active" | "closed" | "mine" | "all"
 
-async function share(r: LiveRequest, now: number) {
+export const publicLink = (id: number) => `${location.origin}/r/${id}`
+
+// The link opens a live status page, so a forward read days later says "closed" instead of "urgent".
+export async function share(r: LiveRequest, now: number) {
   const hrs = Math.max(1, Math.round((r.expiresAt - now) / 3600_000))
-  const text = `${r.group} blood needed: ${r.units} unit${r.units > 1 ? "s" : ""} at ${r.hospital}, ${r.area} (verified, ${requestLabel(r.id)}). Needed within ~${hrs}h. If you can donate, please contact the hospital blood bank.`
+  const text = `${r.group} blood needed: ${r.units} unit${r.units > 1 ? "s" : ""} at ${r.hospital}, ${r.area} (verified, ${requestLabel(r.id)}). Needed within ~${hrs}h. Check it's still needed before forwarding:`
+  const url = publicLink(r.id)
   try {
-    if (navigator.share) await navigator.share({ title: `${r.group} blood needed`, text, url: location.origin })
-    else (await navigator.clipboard.writeText(`${text} ${location.origin}`), toast.success("Copied — paste it to your family group"))
+    if (navigator.share) await navigator.share({ title: `${r.group} blood needed`, text, url })
+    else (await navigator.clipboard.writeText(`${text} ${url}`), toast.success("Copied — paste it to your family group"))
   } catch (e) {
     if ((e as Error).name !== "AbortError") toast.error("Couldn't share this request")
   }
@@ -341,6 +345,7 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="rounded-2xl p-1.5">
               <DropdownMenuItem className="rounded-xl" onClick={() => setEditing(true)}>Edit / record units</DropdownMenuItem>
+              {r.verified && <DropdownMenuItem className="rounded-xl" onClick={() => navigator.clipboard.writeText(publicLink(r.id)).then(() => toast.success("Public status link copied"))}>Copy public link</DropdownMenuItem>}
               <DropdownMenuItem className="rounded-xl" onClick={() => act(api.fulfill, `${requestLabel(r.id)} fulfilled`)}>Mark as fulfilled</DropdownMenuItem>
               <DropdownMenuItem className="rounded-xl" onClick={() => act(api.cancel, `${requestLabel(r.id)} cancelled`)}>Cancel request</DropdownMenuItem>
             </DropdownMenuContent>

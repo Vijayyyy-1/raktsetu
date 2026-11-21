@@ -52,6 +52,14 @@ export class RequestsService {
     });
     return this.withProgress(rows.map(({ updatedAt, verifiedBy, ...r }) => ({ ...r, closedAt: updatedAt, verifiedBy: verifiedBy?.email ?? null })));
   }
+  // Public status for a shared link: verified requests only, any state, nothing about the patient or donors.
+  async publicStatus(id: number) {
+    const r = await this.prisma.bloodRequest.findFirst({ where: { id, verified: true }, select: { ...publicFields, status: true, updatedAt: true } });
+    if (!r) throw new NotFoundException('Request not found');
+    const expired = r.status === RequestStatus.OPEN && r.expiresAt <= new Date();
+    const { updatedAt, ...rest } = await this.one(r);
+    return { ...rest, status: expired ? RequestStatus.EXPIRED : r.status, closedAt: r.status === RequestStatus.OPEN ? (expired ? r.expiresAt : null) : updatedAt };
+  }
   async get(id: number) {
     const request = await this.prisma.bloodRequest.findFirst({ where: { id, status: RequestStatus.OPEN, expiresAt: { gt: new Date() } }, select: publicFields });
     if (!request) throw new NotFoundException('Active request not found');

@@ -15,6 +15,7 @@ export class RequestsController {
   supply() { return this.service.supply(); }
   @Get('responses/me') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)
   myResponses(@CurrentUser() user: AuthUser) { return this.service.myResponses(user); }
+  @Get(':id/status') status(@Param('id', ParseIntPipe) id: number) { return this.service.publicStatus(id); }
   @Get(':id') get(@Param('id', ParseIntPipe) id: number) { return this.service.get(id); }
   @Post() @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateRequestDto) { return this.service.create(user, dto); }

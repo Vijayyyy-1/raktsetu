@@ -123,6 +123,7 @@ export const api = {
       .map((o) => ({ donorId: o.donorId, name: o.displayName, group: toGroup(o.bloodGroup), area: o.area, lat: o.latitude, lng: o.longitude, km: o.distanceKm, email: o.email, phone: o.phone, status: o.status.toLowerCase() as OutreachStatus, updatedAt: Date.parse(o.updatedAt) })),
   setOutreach: async (id: number, donorId: number, status: OutreachStatus) =>
     toRequest(await call<ApiRequest>("PUT", `/blood-requests/${id}/outreach/${donorId}`, { status: status.toUpperCase() })),
+  requestStatus: async (id: number) => toRequest(await call<ApiRequest>("GET", `/blood-requests/${id}/status`)),
   closedRequests: async () => (await call<ApiRequest[]>("GET", "/blood-requests/closed")).map((r) => toRequest(r)),
   supply: () => call<Supply[]>("GET", "/blood-requests/supply"),
   // Donor side: "I can come"
