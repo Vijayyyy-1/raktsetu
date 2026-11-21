@@ -158,7 +158,20 @@ export class RequestsService {
     const request = await this.requestOrFail(id);
     if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified');
     if (!(await this.prisma.donor.findUnique({ where: { id: donorId }, select: { id: true } }))) throw new NotFoundException('Donor not found');
-    await this.prisma.outreach.upsert({ where: { requestId_donorId: { requestId: id, donorId } }, update: { status: dto.status }, create: { requestId: id, donorId, status: dto.status } });
+    const key = { requestId_donorId: { requestId: id, donorId } };
+    const before = await this.prisma.outreach.findUnique({ where: key, select: { status: true } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.outreach.upsert({ where: key, update: { status: dto.status }, create: { requestId: id, donorId, status: dto.status } });
+      // "Donated" is a real donation: it goes into the donor's history and restarts their eligibility clock.
+      // Moving away from "donated" (a mis-click) takes that entry back out.
+      const wasDonated = before?.status === OutreachStatus.DONATED, isDonated = dto.status === OutreachStatus.DONATED;
+      if (isDonated && !wasDonated) await tx.donation.create({ data: { donorId, requestId: id, donatedAt: new Date() } });
+      if (wasDonated && !isDonated) await tx.donation.deleteMany({ where: { donorId, requestId: id } });
+      if (isDonated !== wasDonated) {
+        const latest = await tx.donation.findFirst({ where: { donorId }, orderBy: { donatedAt: 'desc' } });
+        await tx.donor.update({ where: { id: donorId }, data: { lastDonationAt: latest?.donatedAt ?? null } });
+      }
+    });
     return this.one(await this.prisma.bloodRequest.findUniqueOrThrow({ where: { id }, select: publicFields }));
   }
 }

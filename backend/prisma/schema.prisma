@@ -83,10 +83,12 @@ model Donation {
   id        Int      @id @default(autoincrement())
   donorId   Int
   donatedAt DateTime
+  requestId Int? // set when recorded by a coordinator marking the donor "donated" for a request
   createdAt DateTime @default(now())
   donor     Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
 
   @@unique([donorId, donatedAt])
+  @@index([donorId, requestId])
 }
 
 model BloodRequest {
