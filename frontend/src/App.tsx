@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/sonner"
 import { Logo } from "@/components/bits"
+import { BloodGuide } from "@/components/BloodGuide"
 import { api, clearToken, setUnauthorizedHandler, type LiveRequest, type Role } from "@/api"
 import { Login } from "@/screens/Login"
 import { Register } from "@/screens/Register"
@@ -88,6 +89,7 @@ export default function App() {
                     </button>
                   ))}
                 </nav>
+                <BloodGuide />
                 <button onClick={signOut} className="flex items-center gap-2 rounded-full p-1.5 text-sm font-semibold transition-colors hover:bg-muted sm:pr-4" aria-label="Sign out">
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-blood-soft text-xs font-bold uppercase text-blood">{initials(session.name ?? session.email)}</span>
                   <span className="hidden text-left leading-tight sm:block">

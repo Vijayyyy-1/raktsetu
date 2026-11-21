@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { ArrowLeft, Check, Loader2, LocateFixed, MapPin, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Btn, Drop, Logo, SPRING } from "@/components/bits"
+import { BloodGuide } from "@/components/BloodGuide"
 import { api, type Role } from "@/api"
 import { GROUPS, type Group } from "@/data"
 import { approx, placeLocation, placesEnabled, searchPlaces, type Suggestion } from "@/places"
@@ -62,6 +63,7 @@ export function Register({ onDone, onBack }: { onDone: (r: Role, email: string) 
           </Section>
 
           <Section n={2} title="Your blood group">
+            <BloodGuide key={group ?? "none"} initial={group ?? "B+"} label="Who can I donate to?" className="mb-3 ml-1" />
             <div className="grid grid-cols-4 gap-2">
               {GROUPS.map((g) => (
                 <button type="button" key={g} onClick={() => setGroup(g)} className={cn("relative h-14 rounded-2xl font-display text-xl font-semibold transition-colors", group === g ? "text-white" : "bg-muted hover:bg-secondary")}>
