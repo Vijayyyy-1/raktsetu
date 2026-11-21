@@ -34,6 +34,15 @@ The demo coordinator email/password are controlled by `COORDINATOR_EMAIL` and `C
 3. API: `cd backend && npm run start:local` → loads `.env`, `.env.local`, then `.env.host`
 4. Frontend: `cd frontend && pnpm dev` (`frontend/.env` points at `http://localhost:3001/v1`)
 
+## Tests
+
+`cd backend && npm test` runs the logic tests with Node's built-in test runner (no extra dependencies). It needs the database container running and `backend/.env.host` (see above).
+
+- `test/matching.test.ts`: blood-group compatibility, the eligibility interval and distance.
+- `test/flows.test.ts`: end-to-end flows against the real API (same config as production): auth and roles, request → verify → match, a donor saying "I can come" and the coordinator seeing it, contact release, fulfilment (full and partial), expiry, donation history and drive RSVPs.
+
+Test data is created at a remote location with `@test.raktsetu` emails and deleted afterwards, so seeded and real data are never touched. Tests marked `todo` document known gaps.
+
 ## API outline
 
 | Method | Path | Access | Purpose |

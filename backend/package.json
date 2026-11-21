@@ -13,7 +13,8 @@
     "db:seed": "ts-node --transpile-only prisma/seed.ts",
     "db:setup": "npm run db:migrate && npm run db:seed",
     "docker:start": "npm run db:setup && npm run start:dev",
-    "start:local": "nest start --watch --exec \"node --env-file=.env --env-file=.env.local --env-file=.env.host\""
+    "start:local": "nest start --watch --exec \"node --env-file=.env --env-file=.env.local --env-file=.env.host\"",
+    "test": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=.env.host --require ts-node/register/transpile-only --test --test-concurrency=1 test/*.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.0",
