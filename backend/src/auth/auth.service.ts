@@ -23,6 +23,7 @@ export class AuthService {
         donor: { create: {
           displayName: dto.displayName.trim(), bloodGroup: dto.bloodGroup, phoneEncrypted: encrypt(dto.phone), area: dto.area.trim(),
           latitude: dto.latitude, longitude: dto.longitude, lastDonationAt: dto.lastDonationAt ? new Date(dto.lastDonationAt) : null,
+          ...(dto.lastDonationAt ? { donations: { create: { donatedAt: new Date(dto.lastDonationAt) } } } : {}),
         } },
       },
       include: { donor: true },

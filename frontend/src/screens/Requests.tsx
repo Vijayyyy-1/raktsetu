@@ -1,13 +1,13 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowRight, Building2, Loader2, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck } from "lucide-react"
+import { ArrowRight, Building2, Loader2, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BloodChip, Btn, SPRING, SectionHead, StatusTag, UrgencyTag, VerifiedTag, fadeUp, popIn } from "@/components/bits"
-import { api, requestLabel, type LiveRequest } from "@/api"
-import { GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
+import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest } from "@/api"
+import { CAN_RECEIVE, GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
 import { cn } from "@/lib/utils"
 
 // Expiry is computed on read, same rule as the API.
@@ -32,20 +32,37 @@ type Props = {
 }
 
 export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly }: Props) {
-  const [tab, setTab] = useState<"active" | "closed">("active")
+  const [tab, setTab] = useState<Tab>(readOnly ? "mine" : "active")
   const [open, setOpen] = useState(false)
+  const [me, setMe] = useState<DonorProfile | null>(null)
+  useEffect(() => void (readOnly && api.me().then(setMe).catch((e) => toast.error(e.message))), [readOnly])
   const all = requests ?? []
   const active = all.filter((r) => statusOf(r, now) === "open")
-  // Public feed only shows verified needs; coordinators see everything they must act on.
-  const visibleActive = readOnly ? active.filter((r) => r.verified) : active
-  const shown = tab === "active" ? visibleActive : all.filter((r) => statusOf(r, now) !== "open")
+  // Donors see verified needs only, nearest first; "mine" narrows to groups their blood can serve.
+  const feed = active
+    .filter((r) => r.verified)
+    .map((r) => ({ r, km: me ? Math.round(distanceKm(me.lat, me.lng, r.lat, r.lng) * 10) / 10 : undefined, canGive: !!me && CAN_RECEIVE[r.group].includes(me.group) }))
+    .sort((a, b) => (a.km ?? 0) - (b.km ?? 0))
+  const mine = feed.filter((f) => f.canGive)
+  // Coordinator triage: tiles filter the open list; unverified first (they block matching), then soonest to close.
+  const [filter, setFilter] = useState<Filter | null>(null)
+  const triage = active
+    .filter((r) => !filter || FILTERS[filter](r))
+    .sort((a, b) => Number(a.verified) - Number(b.verified) || a.expiresAt - b.expiresAt)
+  const pickFilter = (f: Filter) => (setFilter((cur) => (cur === f ? null : f)), setTab("active"))
+  const shown: { r: LiveRequest; km?: number; canGive?: boolean }[] = readOnly
+    ? tab === "mine" ? mine : feed
+    : (tab === "active" ? triage : all.filter((r) => statusOf(r, now) !== "open")).map((r) => ({ r }))
+  const tabs: { id: Tab; label: string }[] = readOnly
+    ? [{ id: "mine", label: `You can donate · ${mine.length}` }, { id: "all", label: `All groups · ${feed.length}` }]
+    : [{ id: "active", label: `Open · ${active.length}` }, { id: "closed", label: `Closed this session · ${all.length - active.length}` }]
 
   return (
     <motion.div {...fadeUp} className="space-y-8">
       <SectionHead
         kicker={readOnly ? "Near you" : "Coordinator desk"}
         title={readOnly ? <>Who needs <span className="italic text-blood">help</span> today</> : <>{active.length} {active.length === 1 ? "request is" : "requests are"} <span className="italic text-blood">open</span></>}
-        sub={readOnly ? "Verified requests only — no patient names or diagnoses, ever." : undefined}
+        sub={readOnly ? (tab === "mine" ? `Verified needs your ${me?.group ?? ""} blood can serve. No patient names or diagnoses, ever.` : "Every verified need — share one with family or friends who can help.") : undefined}
       >
         <div className="flex gap-2">
           <Btn variant="ghost" size="lg" onClick={onRefresh} aria-label="Refresh"><RefreshCw className="h-4 w-4" /></Btn>
@@ -55,25 +72,28 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
 
       {!readOnly && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Stat i={0} big={active.filter((r) => r.urgency === "critical").length} label="critical right now" tone="bg-blood text-white" />
-          <Stat i={1} big={active.filter((r) => !r.verified).length} label="need verifying" tone="bg-peach text-[#7a3a14]" />
-          <Stat i={2} big={active.filter((r) => r.verified).length} label="ready to match" tone="bg-white" />
+          <Stat i={0} big={active.filter(FILTERS.critical).length} label="critical right now" tone="bg-blood text-white" active={filter === "critical"} onClick={() => pickFilter("critical")} />
+          <Stat i={1} big={active.filter(FILTERS.verify).length} label="need verifying" tone="bg-peach text-[#7a3a14]" active={filter === "verify"} onClick={() => pickFilter("verify")} />
+          <Stat i={2} big={active.filter(FILTERS.ready).length} label="ready to match" tone="bg-white" active={filter === "ready"} onClick={() => pickFilter("ready")} />
           <Stat i={3} big={active.reduce((n, r) => n + r.units, 0)} label="units still needed" tone="bg-emerald-50 text-ok" />
         </div>
       )}
 
-      {!readOnly && (
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-fit rounded-full bg-white/70 p-1 shadow-sm">
-          {(["active", "closed"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className={cn("relative rounded-full px-5 py-2 text-sm font-semibold capitalize", tab !== t && "text-muted-foreground")}>
-              {tab === t && <motion.span layoutId="req-tab" transition={SPRING} className="absolute inset-0 rounded-full bg-foreground" />}
-              <span className={cn("relative", tab === t && "text-white")}>
-                {t === "active" ? `Open · ${active.length}` : `Closed this session · ${all.length - active.length}`}
-              </span>
+          {tabs.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} className={cn("relative rounded-full px-5 py-2 text-sm font-semibold", tab !== t.id && "text-muted-foreground")}>
+              {tab === t.id && <motion.span layoutId="req-tab" transition={SPRING} className="absolute inset-0 rounded-full bg-foreground" />}
+              <span className={cn("relative", tab === t.id && "text-white")}>{t.label}</span>
             </button>
           ))}
         </div>
-      )}
+        {!readOnly && filter && tab === "active" && (
+          <button onClick={() => setFilter(null)} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-muted">
+            Showing: {FILTER_LABEL[filter]} <X className="h-3.5 w-3.5" aria-label="Clear filter" />
+          </button>
+        )}
+      </div>
 
       {requests === null ? (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -82,11 +102,11 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
       ) : (
         <motion.div layout className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
-            {shown.map((r, i) => (
-              <RequestCard key={r.id} i={i} r={r} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
+            {shown.map(({ r, km, canGive }, i) => (
+              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
             ))}
           </AnimatePresence>
-          {shown.length === 0 && <p className="col-span-full py-16 text-center font-display text-2xl italic text-muted-foreground">All quiet here.</p>}
+          {shown.length === 0 && <p className="col-span-full py-16 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
         </motion.div>
       )}
 
@@ -95,20 +115,53 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   )
 }
 
-function Stat({ i, big, label, tone }: { i: number; big: number | string; label: string; tone: string }) {
+const posted = (ms: number) => { const m = Math.floor(ms / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago` }
+
+type Filter = "critical" | "verify" | "ready"
+const FILTERS: Record<Filter, (r: LiveRequest) => boolean> = {
+  critical: (r) => r.urgency === "critical",
+  verify: (r) => !r.verified,
+  ready: (r) => r.verified,
+}
+const FILTER_LABEL: Record<Filter, string> = { critical: "critical", verify: "needs verifying", ready: "ready to match" }
+
+function Stat({ i, big, label, tone, active, onClick }: { i: number; big: number | string; label: string; tone: string; active?: boolean; onClick?: () => void }) {
   return (
-    <motion.div {...popIn(i)} className={cn("rounded-[24px] p-5 shadow-[0_10px_30px_-16px_hsl(0_60%_40%/0.25)]", tone)}>
+    <motion.button
+      {...popIn(i)}
+      type="button"
+      disabled={!onClick}
+      aria-pressed={onClick ? !!active : undefined}
+      onClick={onClick}
+      whileHover={onClick ? { y: -3 } : undefined}
+      className={cn("rounded-[24px] p-5 text-left shadow-[0_10px_30px_-16px_hsl(0_60%_40%/0.25)] transition-shadow disabled:cursor-default", tone, active && "ring-2 ring-foreground ring-offset-2 ring-offset-background")}
+    >
       <div className="font-display text-4xl font-medium tabular-nums">{big}</div>
       <div className="mt-1 text-sm opacity-80">{label}</div>
-    </motion.div>
+    </motion.button>
   )
 }
 
-function RequestCard({ r, i, now, readOnly, onChange, onMatch }: { r: LiveRequest; i: number; now: number } & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
+type Tab = "active" | "closed" | "mine" | "all"
+
+async function share(r: LiveRequest, now: number) {
+  const hrs = Math.max(1, Math.round((r.expiresAt - now) / 3600_000))
+  const text = `${r.group} blood needed: ${r.units} unit${r.units > 1 ? "s" : ""} at ${r.hospital}, ${r.area} (verified, ${requestLabel(r.id)}). Needed within ~${hrs}h. If you can donate, please contact the hospital blood bank.`
+  try {
+    if (navigator.share) await navigator.share({ title: `${r.group} blood needed`, text, url: location.origin })
+    else (await navigator.clipboard.writeText(`${text} ${location.origin}`), toast.success("Copied — paste it to your family group"))
+  } catch (e) {
+    if ((e as Error).name !== "AbortError") toast.error("Couldn't share this request")
+  }
+}
+
+function RequestCard({ r, i, now, km, canGive, readOnly, onChange, onMatch }: { r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean } & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
   const [busy, setBusy] = useState(false)
   const status = statusOf(r, now)
   const isOpen = status === "open"
-  const left = Math.max(0, Math.min(1, (r.expiresAt - now) / (WINDOW[r.urgency] * 3600_000)))
+  // Share of the request's own lifetime left; under an hour is "closing soon" whatever the urgency.
+  const left = Math.max(0, Math.min(1, (r.expiresAt - now) / Math.max(1, r.expiresAt - r.createdAt)))
+  const soon = r.expiresAt - now < 3600_000
 
   const act = async (fn: (id: number) => Promise<LiveRequest>, ok: string) => {
     setBusy(true)
@@ -135,7 +188,7 @@ function RequestCard({ r, i, now, readOnly, onChange, onMatch }: { r: LiveReques
           <BloodChip group={r.group} />
           <div>
             <div className="font-display text-2xl font-medium">{r.units} unit{r.units > 1 && "s"}</div>
-            <div className="text-xs text-muted-foreground">{requestLabel(r.id)}</div>
+            <div className="text-xs text-muted-foreground">{requestLabel(r.id)} · posted {posted(now - r.createdAt)}</div>
           </div>
         </div>
         {isOpen ? <UrgencyTag u={r.urgency} /> : <StatusTag s={status} />}
@@ -143,22 +196,31 @@ function RequestCard({ r, i, now, readOnly, onChange, onMatch }: { r: LiveReques
 
       <div className="mt-5 space-y-1.5 text-sm">
         <div className="flex items-center gap-2 font-medium"><Building2 className="h-4 w-4 text-blood/70" />{r.hospital}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="h-4 w-4" />{r.area}</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="h-4 w-4" />{r.area}{km !== undefined && ` · ${km} km away`}</div>
       </div>
 
       {isOpen && (
         <div className="mt-5">
           <div className="mb-1.5 flex justify-between text-xs">
-            <span className="text-muted-foreground">Closes automatically in</span>
-            <Countdown at={r.expiresAt} now={now} className={cn("font-semibold", left < 0.3 && "text-blood")} />
+            <span className={soon ? "font-semibold text-blood" : "text-muted-foreground"}>{soon ? "Closing soon" : "Closes automatically in"}</span>
+            <Countdown at={r.expiresAt} now={now} className={cn("font-semibold", soon && "text-blood")} />
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <motion.div className={cn("h-full rounded-full", left < 0.3 ? "bg-blood" : "bg-[#f2a097]")} animate={{ width: `${left * 100}%` }} transition={{ duration: 0.8 }} />
+            <motion.div className={cn("h-full rounded-full", soon ? "bg-blood" : "bg-[#f2a097]")} animate={{ width: `${left * 100}%` }} transition={{ duration: 0.8 }} />
           </div>
         </div>
       )}
 
-      <div className="mt-5"><VerifiedTag verified={r.verified} /></div>
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <VerifiedTag verified={r.verified} />
+        {readOnly && canGive === false && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Not your blood group</span>}
+      </div>
+
+      {isOpen && readOnly && (
+        <Btn variant="soft" className="mt-5 w-full" onClick={() => share(r, now)}>
+          <Share2 className="h-4 w-4" /> Share with family
+        </Btn>
+      )}
 
       {isOpen && !readOnly && (
         <div className="mt-5 flex gap-2 border-t pt-5">

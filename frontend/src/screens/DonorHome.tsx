@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { BellRing, Building2, CalendarDays, CalendarHeart, Loader2, MapPin, ShieldCheck } from "lucide-react"
+import { BellRing, Building2, CalendarHeart, Droplet, Loader2, MapPin, ShieldCheck, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DatePicker } from "@/components/DatePicker"
 import { BloodChip, Btn, EstimateNote, SPRING, SectionHead, fadeUp, popIn } from "@/components/bits"
-import { api, distanceKm, requestLabel, type DonorProfile, type Eligibility, type LiveRequest } from "@/api"
-import { CAN_RECEIVE, MONTHLY_SUPPLY } from "@/data"
+import { api, distanceKm, requestLabel, type Donation, type DonorProfile, type Eligibility, type LiveRequest } from "@/api"
+import { CAN_RECEIVE } from "@/data"
 import { Countdown, statusOf } from "./Requests"
 import { cn } from "@/lib/utils"
 
@@ -16,18 +16,21 @@ const DAY = 864e5
 export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; now: number }) {
   const [me, setMe] = useState<DonorProfile | null>(null)
   const [elig, setElig] = useState<Eligibility | null>(null)
+  const [history, setHistory] = useState<Donation[] | null>(null)
   const [saving, setSaving] = useState(false)
   const [day, setDay] = useState<Date | undefined>(() => new Date())
-  const [pickOpen, setPickOpen] = useState(false)
+  const [removing, setRemoving] = useState<Donation | null>(null)
 
-  const load = () => Promise.all([api.me(), api.eligibility()]).then(([m, e]) => (setMe(m), setElig(e)))
+  const load = () => Promise.all([api.me(), api.eligibility(), api.donations()]).then(([m, e, h]) => (setMe(m), setElig(e), setHistory(h)))
   useEffect(() => void load().catch((e) => toast.error(e.message)), [])
 
-  const save = async (patch: Parameters<typeof api.updateMe>[0], ok?: string) => {
+  const save = async (run: () => Promise<DonorProfile>, ok?: string) => {
     setSaving(true)
     try {
-      setMe(await api.updateMe(patch))
-      setElig(await api.eligibility())
+      setMe(await run())
+      const [e, h] = await Promise.all([api.eligibility(), api.donations()])
+      setElig(e)
+      setHistory(h)
       if (ok) toast.success(ok)
     } catch (e) {
       toast.error((e as Error).message)
@@ -36,7 +39,7 @@ export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; n
     }
   }
 
-  if (!me || !elig) return <div className="grid h-[60vh] place-items-center"><Loader2 className="h-6 w-6 animate-spin text-blood" /></div>
+  if (!me || !elig || !history) return <div className="grid h-[60vh] place-items-center"><Loader2 className="h-6 w-6 animate-spin text-blood" /></div>
 
   const first = me.name.replace(/\(.*?\)/g, "").trim().split(" ")[0]
   const last = me.lastDonationAt ? Date.parse(me.lastDonationAt) : null
@@ -101,21 +104,11 @@ export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; n
               <div className="font-semibold">Open to requests</div>
               <div className="text-xs text-muted-foreground">Pause any time — exams, travel, feeling unwell.</div>
             </div>
-            <Switch checked={me.available} disabled={saving} onCheckedChange={(v) => save({ available: v }, v ? "You're back on the list" : "Paused — we won't match you")} />
+            <Switch checked={me.available} disabled={saving} onCheckedChange={(v) => save(() => api.updateMe({ available: v }), v ? "You're back on the list" : "Paused — we won't match you")} />
           </div>
           <div className="mt-3 flex gap-2">
-            <Popover open={pickOpen} onOpenChange={setPickOpen}>
-              <PopoverTrigger asChild>
-                <button type="button" aria-label="Donation date" className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-white px-4 text-sm transition-colors hover:border-blood/40">
-                  <CalendarDays className="h-4 w-4 shrink-0 text-blood" />
-                  <span className="truncate">{day ? day.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Pick a date"}</span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-auto rounded-2xl p-0">
-                <Calendar mode="single" selected={day} defaultMonth={day} captionLayout="dropdown" startMonth={new Date(2000, 0)} endMonth={new Date()} disabled={{ after: new Date() }} onSelect={(d) => (setDay(d), setPickOpen(false))} />
-              </PopoverContent>
-            </Popover>
-            <Btn variant="soft" size="lg" disabled={saving || !day} onClick={() => day && save({ lastDonationAt: day.toISOString() }, "Thank you! We'll stay quiet while you recover.")}>
+            <DatePicker label="Donation date" value={day} onChange={setDay} className="h-12 flex-1" />
+            <Btn variant="soft" size="lg" disabled={saving || !day} onClick={() => day && save(() => api.addDonation(day), "Thank you! We'll stay quiet while you recover.")}>
               <CalendarHeart className="h-4 w-4" /> I donated
             </Btn>
           </div>
@@ -144,27 +137,77 @@ export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; n
             </ul>
           )}
 
-          <h3 className="mt-8 text-lg font-medium">When supply runs low</h3>
-          <div className="mt-4 flex h-32 items-end gap-1.5">
-            {MONTHLY_SUPPLY.map((m, i) => (
-              <div key={m.m} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
-                <motion.div
-                  className={cn("w-full rounded-full", m.v < 75 ? "bg-gradient-to-t from-[#C9303F] to-[#FF7B72]" : "bg-secondary", i === new Date().getMonth() && "outline outline-2 outline-offset-2 outline-foreground/70")}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${(m.v / 110) * 100}%` }}
-                  transition={{ ...SPRING, delay: 0.2 + i * 0.04 }}
-                  title={`${m.m}: ${m.v}% of need`}
-                />
-                <span className="text-[10px] text-muted-foreground">{m.m}</span>
+          <h3 className="mt-8 text-lg font-medium">Your donations</h3>
+          {history.length === 0 ? (
+            <p className="mt-4 rounded-2xl bg-muted p-5 text-sm text-muted-foreground">No donations recorded yet. Add one with the date picker when you give.</p>
+          ) : (
+            <>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {[
+                  { n: history.length, l: history.length === 1 ? "donation" : "donations" },
+                  { n: fmtDate(history[history.length - 1].donatedAt, { month: "short", year: "numeric" }), l: "first recorded" },
+                  { n: history.length > 1 ? `${Math.round((Date.parse(history[0].donatedAt) - Date.parse(history[history.length - 1].donatedAt)) / DAY / (history.length - 1))}d` : "—", l: "average gap" },
+                ].map((s) => (
+                  <div key={s.l} className="rounded-2xl bg-muted/60 p-3">
+                    <div className="font-display text-xl font-medium">{s.n}</div>
+                    <div className="text-xs text-muted-foreground">{s.l}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">Illustrative: donations dip in summer and festival months — that's when giving matters most.</p>
+              <ol className="mt-5 max-h-72 space-y-0 overflow-y-auto pr-1">
+                {history.map((d, i) => {
+                  const at = Date.parse(d.donatedAt)
+                  const prev = history[i + 1] ? Date.parse(history[i + 1].donatedAt) : null
+                  return (
+                    <motion.li key={d.id} {...popIn(i)} className="group relative flex gap-4 pb-5 last:pb-0">
+                      {i < history.length - 1 && <span className="absolute left-[15px] top-8 h-[calc(100%-2rem)] w-0.5 bg-secondary" />}
+                      <span className={cn("relative grid h-8 w-8 shrink-0 place-items-center rounded-full", i === 0 ? "bg-gradient-to-br from-[#FF7B72] to-[#C9303F] text-white" : "bg-secondary text-blood")}>
+                        <Droplet className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1 pt-1">
+                        <div className="font-semibold">{fmtDate(d.donatedAt, { day: "numeric", month: "long", year: "numeric" })}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {i === 0 ? "Latest · " : ""}{ago(Math.floor((now - at) / DAY))}{prev ? ` · ${Math.round((at - prev) / DAY)} days after the previous one` : " · first recorded"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Remove donation on ${fmtDate(d.donatedAt, { day: "numeric", month: "long", year: "numeric" })}`}
+                        disabled={saving}
+                        onClick={() => setRemoving(d)}
+                        className="h-8 rounded-full px-2 text-muted-foreground opacity-0 transition hover:text-blood focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </motion.li>
+                  )
+                })}
+              </ol>
+            </>
+          )}
         </motion.div>
       </div>
+
+      <Dialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)}>
+        <DialogContent className="rounded-[28px] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove this donation?</DialogTitle>
+            <DialogDescription>
+              {removing && fmtDate(removing.donatedAt, { day: "numeric", month: "long", year: "numeric" })} will be taken off your history, and your eligibility will be recalculated.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Btn variant="ghost" onClick={() => setRemoving(null)}>Keep it</Btn>
+            <Btn disabled={saving} onClick={() => removing && save(() => api.removeDonation(removing.id), "Donation removed").then(() => setRemoving(null))}>Remove</Btn>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }
+
+const fmtDate = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(iso).toLocaleDateString("en-IN", opts)
+const ago = (days: number) => (days <= 0 ? "today" : days === 1 ? "yesterday" : days < 60 ? `${days} days ago` : days < 730 ? `${Math.round(days / 30)} months ago` : `${Math.round(days / 365)} years ago`)
 
 function Ring({ progress, ready, label }: { progress: number; ready: boolean; label: string }) {
   const c = 2 * Math.PI * 50

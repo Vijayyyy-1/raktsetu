@@ -1,6 +1,10 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsDateString, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+
+export class CreateDonationDto {
+  @ApiProperty() @IsDateString() donatedAt: string;
+}
 
 export class UpdateDonorDto {
   @ApiPropertyOptional() @IsOptional() @IsString() displayName?: string;

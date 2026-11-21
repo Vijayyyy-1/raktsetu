@@ -28,8 +28,3 @@ export const HOSPITALS = [
 
 export const maskPhone = (p: string) => `${p.slice(0, 3)}••• ••${p.slice(-3)}`
 
-// Monthly donations index (100 = need met) — illustrative, shows the summer/festival dip.
-export const MONTHLY_SUPPLY = [
-  { m: "Jan", v: 104 }, { m: "Feb", v: 101 }, { m: "Mar", v: 88 }, { m: "Apr", v: 66 }, { m: "May", v: 52 }, { m: "Jun", v: 61 },
-  { m: "Jul", v: 83 }, { m: "Aug", v: 90 }, { m: "Sep", v: 78 }, { m: "Oct", v: 58 }, { m: "Nov", v: 71 }, { m: "Dec", v: 96 },
-]

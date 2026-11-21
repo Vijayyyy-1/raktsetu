@@ -44,6 +44,7 @@ export type LiveRequest = {
   urgency: Urgency
   verified: boolean
   expiresAt: number
+  createdAt: number
   status: RequestStatus
 }
 export type Match = { donorId: number; name: string; group: Group; area: string; km: number; email: string; phone: string; eligibility: string }
@@ -58,12 +59,13 @@ export type DonorProfile = {
   phone: string
   lastDonationAt: string | null
 }
-export type Eligibility = { eligible: boolean; nextEligibleAt: string | null; reason: string; rule: string }
+export type Donation = { id: number; donatedAt: string }
+export type Eligibility ={ eligible: boolean; nextEligibleAt: string | null; reason: string; rule: string }
 
-type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string }
+type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string; createdAt: string }
 const toRequest = (r: ApiRequest, status: RequestStatus = "open"): LiveRequest => ({
   id: r.id, group: toGroup(r.bloodGroup), units: r.units, hospital: r.hospitalName, area: r.area, lat: r.latitude, lng: r.longitude,
-  urgency: URG[r.urgency], verified: r.verified, expiresAt: Date.parse(r.expiresAt), status,
+  urgency: URG[r.urgency], verified: r.verified, expiresAt: Date.parse(r.expiresAt), createdAt: Date.parse(r.createdAt), status,
 })
 type ApiDonor = { id: number; displayName: string; bloodGroup: ApiGroup; area: string; latitude: number; longitude: number; available: boolean; phone: string; lastDonationAt: string | null }
 const toDonor = (d: ApiDonor): DonorProfile => ({ id: d.id, name: d.displayName, group: toGroup(d.bloodGroup), area: d.area, lat: d.latitude, lng: d.longitude, available: d.available, phone: d.phone, lastDonationAt: d.lastDonationAt })
@@ -100,9 +102,23 @@ export const api = {
       .map((m) => ({ donorId: m.donorId, name: m.displayName, group: toGroup(m.bloodGroup), area: m.area, km: m.distanceKm, email: m.email, phone: m.phone, eligibility: m.eligibility })),
 
   me: async () => toDonor(await call<ApiDonor>("GET", "/donors/me")),
+  donations: () => call<Donation[]>("GET", "/donors/me/donations"),
+  addDonation: async (at: Date) => toDonor(await call<ApiDonor>("POST", "/donors/me/donations", { donatedAt: at.toISOString() })),
+  removeDonation: async (id: number) => toDonor(await call<ApiDonor>("DELETE", `/donors/me/donations/${id}`)),
   updateMe: async (patch: Partial<{ available: boolean; lastDonationAt: string | null; area: string; latitude: number; longitude: number }>) => toDonor(await call<ApiDonor>("PATCH", "/donors/me", patch)),
   eligibility: () => call<Eligibility>("GET", "/donors/me/eligibility"),
+
+  // Blood donation drives / camps
+  drives: async (near?: { lat: number; lng: number }) => (await call<ApiDrive[]>("GET", `/drives${near ? `?lat=${near.lat}&lng=${near.lng}` : ""}`)).map(toDrive),
+  createDrive: async (d: Omit<ApiDrive, "id" | "rsvpCount" | "distanceKm">) => toDrive(await call<ApiDrive>("POST", "/drives", d)),
+  myRsvps: () => call<number[]>("GET", "/drives/rsvps/me"),
+  rsvp: async (id: number) => toDrive(await call<ApiDrive>("POST", `/drives/${id}/rsvp`)),
+  cancelRsvp: async (id: number) => toDrive(await call<ApiDrive>("DELETE", `/drives/${id}/rsvp`)),
 }
+
+type ApiDrive = { id: number; title: string; organizer: string; venue: string; area: string; latitude: number; longitude: number; startsAt: string; endsAt: string; capacity: number | null; rsvpCount: number; distanceKm?: number }
+export type Drive = Omit<ApiDrive, "startsAt" | "endsAt" | "latitude" | "longitude"> & { lat: number; lng: number; startsAt: number; endsAt: number }
+const toDrive = ({ latitude, longitude, startsAt, endsAt, ...d }: ApiDrive): Drive => ({ ...d, lat: latitude, lng: longitude, startsAt: Date.parse(startsAt), endsAt: Date.parse(endsAt) })
 
 export const requestLabel = (id: number) => `RQ-${String(id).padStart(4, "0")}`
 

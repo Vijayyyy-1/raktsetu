@@ -46,6 +46,7 @@ model Account {
   donor        Donor?
   createdRequests BloodRequest[] @relation("RequestCreator")
   verifiedRequests BloodRequest[] @relation("RequestVerifier")
+  createdDrives Drive[]          @relation("DriveCreator")
 }
 
 model Donor {
@@ -62,8 +63,20 @@ model Donor {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   account        Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  donations      Donation[]
+  driveRsvps     DriveRsvp[]
 
   @@index([bloodGroup, available])
+}
+
+model Donation {
+  id        Int      @id @default(autoincrement())
+  donorId   Int
+  donatedAt DateTime
+  createdAt DateTime @default(now())
+  donor     Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@unique([donorId, donatedAt])
 }
 
 model BloodRequest {
@@ -87,4 +100,34 @@ model BloodRequest {
   verifiedBy        Account?      @relation("RequestVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
 
   @@index([status, expiresAt, bloodGroup])
+}
+
+// Blood donation drives / camps posted by coordinators (Rotaract clubs, colleges).
+model Drive {
+  id          Int         @id @default(autoincrement())
+  title       String
+  organizer   String
+  venue       String
+  area        String
+  latitude    Float
+  longitude   Float
+  startsAt    DateTime
+  endsAt      DateTime
+  capacity    Int?
+  createdById Int
+  createdAt   DateTime    @default(now())
+  createdBy   Account     @relation("DriveCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  rsvps       DriveRsvp[]
+
+  @@index([endsAt, startsAt])
+}
+
+model DriveRsvp {
+  driveId   Int
+  donorId   Int
+  createdAt DateTime @default(now())
+  drive     Drive    @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  donor     Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@id([driveId, donorId])
 }

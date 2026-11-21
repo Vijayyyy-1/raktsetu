@@ -28,5 +28,27 @@ export async function placeLocation(id: string): Promise<{ lat: number; lng: num
   return { lat: location.latitude, lng: location.longitude }
 }
 
+export type BloodBank = { id: string; name: string; address: string; lat: number; lng: number; mapsUrl: string; phone?: string; openNow?: boolean }
+
+/** Nearest blood banks via Places Text Search — lets eligible donors give any day, not just at drives. */
+export async function nearbyBloodBanks(at: { lat: number; lng: number }, max = 4): Promise<BloodBank[]> {
+  if (!KEY) return []
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json", "X-Goog-Api-Key": KEY,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.nationalPhoneNumber,places.currentOpeningHours.openNow",
+    },
+    body: JSON.stringify({ textQuery: "blood bank", maxResultCount: max, locationBias: { circle: { center: { latitude: at.lat, longitude: at.lng }, radius: 8000 } } }),
+  })
+  if (!res.ok) throw new Error("Couldn't load nearby blood banks")
+  const data = await res.json()
+  type P = { id: string; displayName: { text: string }; formattedAddress: string; location: { latitude: number; longitude: number }; googleMapsUri: string; nationalPhoneNumber?: string; currentOpeningHours?: { openNow?: boolean } }
+  return (data.places ?? []).map((p: P) => ({
+    id: p.id, name: p.displayName.text, address: p.formattedAddress, lat: p.location.latitude, lng: p.location.longitude,
+    mapsUrl: p.googleMapsUri, phone: p.nationalPhoneNumber, openNow: p.currentOpeningHours?.openNow,
+  }))
+}
+
 // ~1 km precision: enough for matching, avoids storing a donor's exact home.
 export const approx = (n: number) => Math.round(n * 100) / 100
