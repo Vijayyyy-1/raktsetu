@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../api.dart';
+import '../maps.dart';
 import '../ui.dart';
 import 'matches.dart';
 
@@ -16,6 +18,7 @@ class RequestsScreen extends StatefulWidget {
 class _RequestsScreenState extends State<RequestsScreen> {
   final _loader = GlobalKey<LoaderState>();
   int _tab = 0;
+  bool _mapView = false; // coordinator: open requests as cards or on a map
 
   bool get _donor => widget.session.isDonor;
 
@@ -50,24 +53,35 @@ class _RequestsScreenState extends State<RequestsScreen> {
         child: PillTabs(labels: labels, index: _tab, onChanged: (i) => setState(() => _tab = i)),
       );
 
-  // Donors see verified needs only, nearest first; "you can donate" narrows to groups their blood can serve.
+  // Donors see verified needs only, nearest first. "For you": their blood can serve it and it's within alert range.
+  // "Help spread the word": anything within sharing range, to forward to family and friends.
   Widget _donorList(Map<String, dynamic> d) {
     final me = d['me'] as Map<String, dynamic>;
     final responses = d['responses'] as Map<int, String>;
     final feed = (d['requests'] as List<BloodRequest>)
         .where((r) => r.verified && r.liveStatus == 'open')
         .map((r) => (r: r, km: distanceKm(me['latitude'], me['longitude'], r.lat, r.lng), canGive: canReceive[r.group]!.contains(me['group'])))
+        .where((f) => f.km <= shareKm)
         .toList()
       ..sort((a, b) => a.km.compareTo(b.km));
-    final mine = feed.where((f) => f.canGive).toList();
+    final mine = feed.where((f) => f.canGive && f.km <= nearKm).toList();
     final shown = _tab == 0 ? mine : feed;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, navClearance),
       children: [
-        const SectionHead(kicker: 'Live needs', title: 'Requests near you'),
+        SectionHead(
+          kicker: 'Near you',
+          title: 'Who needs help today',
+          sub: _tab == 0
+              ? 'Verified needs within $nearKm km that your ${me['group']} blood can serve. No patient names or diagnoses, ever.'
+              : "Every verified need within $shareKm km. Can't give to one? Share it with family or friends who can.",
+        ),
         const SizedBox(height: 16),
-        _tabs(['You can donate · ${mine.length}', 'All groups · ${feed.length}']),
-        if (shown.isEmpty) const EmptyState('No open requests here right now.'),
+        _tabs(['For you · ${mine.length}', 'Help spread the word · ${feed.length}']),
+        if (shown.isEmpty)
+          EmptyState(_tab == 0 && feed.isNotEmpty
+              ? 'Nothing within $nearKm km for your blood group right now. Check “Help spread the word” to share others.'
+              : 'No open requests near you right now.'),
         ...stagger([
           for (final f in shown)
             Padding(
@@ -102,12 +116,30 @@ class _RequestsScreenState extends State<RequestsScreen> {
           _Stat('To verify', unverified, Icons.verified_outlined, color: amber),
         ]).animate().fadeIn().slideY(begin: 0.1),
         const SizedBox(height: 16),
-        _tabs(['Open · ${open.length}', 'Closed · ${closed.length}']),
-        if (shown.isEmpty) EmptyState(_tab == 0 ? 'No open requests. Tap “New request” to raise one.' : 'Nothing closed in the last 30 days.'),
-        ...stagger([
-          for (final r in shown)
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: RequestCard(r: r, supply: supply[r.id], onChanged: _reload)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: _tabs(['Open · ${open.length}', 'Closed · ${closed.length}'])),
+          if (_tab == 0) ...[
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: _mapView ? 'Show as cards' : 'Show on map',
+              onPressed: () => setState(() => _mapView = !_mapView),
+              icon: Icon(_mapView ? Icons.view_agenda_outlined : Icons.map_outlined),
+              style: IconButton.styleFrom(minimumSize: const Size(50, 50)),
+            ),
+          ],
         ]),
+        if (shown.isEmpty) EmptyState(_tab == 0 ? 'No open requests. Tap “New request” to raise one.' : 'Nothing closed in the last 30 days.'),
+        if (_tab == 0 && _mapView && open.isNotEmpty)
+          RequestsMap(
+            requests: open,
+            supply: supply,
+            onMatch: (r) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => MatchesScreen(r: r))).then((_) => _reload()),
+          ).animate().fadeIn()
+        else
+          ...stagger([
+            for (final r in shown)
+              Padding(padding: const EdgeInsets.only(bottom: 12), child: RequestCard(r: r, supply: supply[r.id], onChanged: _reload)),
+          ]),
       ],
     );
   }
@@ -234,22 +266,48 @@ class _RequestCardState extends State<RequestCard> {
 
   Widget _donorActions() {
     final r = widget.r;
-    if (widget.response != null) {
-      return Row(children: [
-        Expanded(child: Text(_responseLabel[widget.response] ?? widget.response!, style: const TextStyle(fontWeight: FontWeight.w600, color: ok))),
-        if (widget.response == 'responded')
-          TextButton(onPressed: _busy ? null : () => _act(() => Api.withdraw(r.id), 'Withdrawn'), child: const Text('Withdraw')),
-      ]);
+    final shareBtn = widget.canGive
+        ? FilledButton.tonalIcon(onPressed: _share, icon: const Icon(Icons.share_outlined), label: const Text('Share with family'))
+        : FilledButton.icon(onPressed: _share, icon: const Icon(Icons.share_outlined), label: const Text('Share with someone who can give'));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (widget.response != null)
+        Row(children: [
+          Expanded(child: Text(_responseLabel[widget.response] ?? widget.response!, style: const TextStyle(fontWeight: FontWeight.w600, color: ok))),
+          if (widget.response == 'responded')
+            TextButton(onPressed: _busy ? null : () => _act(() => Api.withdraw(r.id), 'Withdrawn'), child: const Text('Withdraw')),
+        ])
+      else if (widget.canGive)
+        FilledButton.icon(
+          onPressed: _busy ? null : () => _act(() => Api.respond(r.id), 'Thanks! The coordinator can see you raised your hand.'),
+          icon: const Icon(Icons.pan_tool_alt_outlined),
+          label: const Text('I can donate'),
+        )
+      else
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: bloodSoft, borderRadius: BorderRadius.circular(16)),
+          child: Text.rich(TextSpan(children: [
+            const TextSpan(text: "Not your blood group. Know someone who's "),
+            TextSpan(text: canReceive[r.group]!.length == groups.length ? 'any blood group' : canReceive[r.group]!.join(', '), style: const TextStyle(fontWeight: FontWeight.w700)),
+            const TextSpan(text: '? Send this to them.'),
+          ])),
+        ),
+      const SizedBox(height: 8),
+      shareBtn,
+    ]);
+  }
+
+  // Same message as the web. The link opens a live status page, so a forward read days later says "closed" instead of "urgent".
+  Future<void> _share() async {
+    final r = widget.r;
+    final hrs = r.expiresAt.difference(DateTime.now()).inMinutes / 60;
+    final text = '${r.group} blood needed: ${r.units} unit${r.units > 1 ? 's' : ''} at ${r.hospital}, ${r.area} (verified, ${r.label}). '
+        "Needed within ~${hrs.round().clamp(1, 999)}h. Check it's still needed before forwarding: $webUrl/r/${r.id}";
+    try {
+      await SharePlus.instance.share(ShareParams(text: text, subject: '${r.group} blood needed'));
+    } catch (_) {
+      if (mounted) toast(context, "Couldn't share this request", error: true);
     }
-    if (!widget.canGive) return Text("Your group can't donate to ${r.group}", style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant));
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: _busy ? null : () => _act(() => Api.respond(r.id), 'Thanks! The coordinator can see you raised your hand.'),
-        icon: const Icon(Icons.pan_tool_alt_outlined),
-        label: const Text('I can donate'),
-      ),
-    );
   }
 
   Widget _coordinatorActions() {

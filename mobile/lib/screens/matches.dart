@@ -1,10 +1,10 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../maps.dart';
 import '../ui.dart';
 
 const maxKm = 50;
@@ -137,7 +137,16 @@ class _MatchesScreenState extends State<MatchesScreen> {
                     Text('${_radius.round()} km', style: t.textTheme.titleLarge),
                   ]),
                   Slider(min: 1, max: maxKm.toDouble(), divisions: maxKm - 1, value: _radius, onChanged: (v) => setState(() => _radius = v), onChangeEnd: (_) => _search()),
-                  if (_matches != null) _Radar(kms: [for (final m in _matches!) (m['distanceKm'] as num).toDouble()], radius: _radius),
+                  if (_matches != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DonorsMap(
+                        at: LatLng(_r.lat, _r.lng),
+                        radiusKm: _radius.roundToDouble(),
+                        donors: rows,
+                        status: {for (final o in _outreach) o['donorId'] as int: o['status'] as String},
+                      ),
+                    ),
                 ]),
               ),
             ),
@@ -226,32 +235,4 @@ class _DonorTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Donors plotted by distance on concentric rings, like the web radar.
-class _Radar extends StatelessWidget {
-  const _Radar({required this.kms, required this.radius});
-  final List<double> kms;
-  final double radius;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 200,
-        child: Stack(alignment: Alignment.center, children: [
-          for (final f in [1.0, 0.66, 0.33])
-            Container(
-              width: 190 * f,
-              height: 190 * f,
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: brand.withValues(alpha: 0.2)), color: brand.withValues(alpha: 0.03)),
-            ),
-          const Icon(Icons.local_hospital, color: brand, size: 22),
-          for (var i = 0; i < kms.length; i++)
-            Transform.translate(
-              offset: Offset.fromDirection(i * 2.39996, 95 * min(kms[i], radius) / max(radius, 1)), // golden angle spreads dots evenly
-              child: Container(width: 12, height: 12, decoration: const BoxDecoration(color: brand, shape: BoxShape.circle))
-                  .animate(delay: (i * 50).ms)
-                  .scale(begin: Offset.zero, curve: Curves.easeOutBack),
-            ),
-        ]),
-      );
 }

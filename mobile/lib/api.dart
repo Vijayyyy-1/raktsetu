@@ -24,6 +24,12 @@ String fromGroup(String g) => g.replaceAll('+', '_POSITIVE').replaceAll('-', '_N
 const _urg = {'ROUTINE': 'planned', 'URGENT': 'urgent', 'CRITICAL': 'critical'};
 String fromUrgency(String u) => _urg.entries.firstWhere((e) => e.value == u).key;
 const urgencyWindowHours = {'critical': 2, 'urgent': 6, 'planned': 24}; // auto-expiry, same as web
+// Donor feed radii, same as web: "For you" matches the backend ALERT_KM; sharing reaches further than you'd travel.
+const nearKm = 15;
+const shareKm = 50;
+// Shared links open the web app's public status page (/r/<id>).
+// shortcut: defaults to the local dev frontend; pass --dart-define=WEB_URL=https://<deployed-site> once the web app is hosted.
+const webUrl = String.fromEnvironment('WEB_URL', defaultValue: 'http://localhost:5173');
 
 class ApiError implements Exception {
   ApiError(this.message, [this.status]);

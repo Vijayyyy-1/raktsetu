@@ -1,3 +1,8 @@
+import java.util.Properties
+
+// Secrets (MAPS_API_KEY) live in the git-ignored android/local.properties, never in source.
+val localProps = Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
@@ -22,6 +27,7 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
+        manifestPlaceholders["mapsApiKey"] = localProps.getProperty("MAPS_API_KEY", "")
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
