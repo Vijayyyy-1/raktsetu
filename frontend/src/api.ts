@@ -50,6 +50,7 @@ export type LiveRequest = {
   coming: number // donors who said they're coming
   donated: number // donors who have donated for this request
 }
+export type Supply = { id: number; within10: number; within25: number }
 export type OutreachStatus = "responded" | "called" | "no_answer" | "coming" | "declined" | "donated"
 export type Outreach = { donorId: number; name: string; group: Group; area: string; km: number; email: string; phone: string; status: OutreachStatus; updatedAt: number }
 export type Match = { donorId: number; name: string; group: Group; area: string; km: number; email: string; phone: string; eligibility: string }
@@ -111,6 +112,7 @@ export const api = {
       .map((o) => ({ donorId: o.donorId, name: o.displayName, group: toGroup(o.bloodGroup), area: o.area, km: o.distanceKm, email: o.email, phone: o.phone, status: o.status.toLowerCase() as OutreachStatus, updatedAt: Date.parse(o.updatedAt) })),
   setOutreach: async (id: number, donorId: number, status: OutreachStatus) =>
     toRequest(await call<ApiRequest>("PUT", `/blood-requests/${id}/outreach/${donorId}`, { status: status.toUpperCase() })),
+  supply: () => call<Supply[]>("GET", "/blood-requests/supply"),
   // Donor side: "I can come"
   respond: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/respond`)),
   withdraw: async (id: number) => toRequest(await call<ApiRequest>("DELETE", `/blood-requests/${id}/respond`)),

@@ -9,6 +9,8 @@ import { RequestsService } from './requests.service';
 export class RequestsController {
   constructor(private service: RequestsService) {}
   @Get() list() { return this.service.listActive(); }
+  @Get('supply') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  supply() { return this.service.supply(); }
   @Get('responses/me') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)
   myResponses(@CurrentUser() user: AuthUser) { return this.service.myResponses(user); }
   @Get(':id') get(@Param('id', ParseIntPipe) id: number) { return this.service.get(id); }

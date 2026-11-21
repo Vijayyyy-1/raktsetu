@@ -24,6 +24,20 @@ export class RequestsService {
     await this.prisma.bloodRequest.updateMany({ where: { status: RequestStatus.OPEN, expiresAt: { lte: new Date() } }, data: { status: RequestStatus.EXPIRED } });
     return this.withProgress(await this.prisma.bloodRequest.findMany({ where: { status: RequestStatus.OPEN, expiresAt: { gt: new Date() } }, select: publicFields, orderBy: [{ urgency: 'desc' }, { createdAt: 'desc' }] }));
   }
+  // How many available, compatible, estimated-eligible donors sit near each open request, so thin coverage is visible before matching.
+  async supply() {
+    const now = new Date();
+    const [requests, donors] = await Promise.all([
+      this.prisma.bloodRequest.findMany({ where: { status: RequestStatus.OPEN, expiresAt: { gt: now } }, select: { id: true, bloodGroup: true, latitude: true, longitude: true } }),
+      this.prisma.donor.findMany({ where: { available: true, account: { isActive: true, role: UserRole.DONOR } }, select: { bloodGroup: true, latitude: true, longitude: true, lastDonationAt: true } }),
+    ]);
+    const ready = donors.filter((d) => eligible(d.lastDonationAt, now));
+    return requests.map((r) => {
+      const groups = compatibleDonorGroups(r.bloodGroup);
+      const km = ready.filter((d) => groups.includes(d.bloodGroup)).map((d) => distanceKm(r.latitude, r.longitude, d.latitude, d.longitude));
+      return { id: r.id, within10: km.filter((k) => k <= 10).length, within25: km.filter((k) => k <= 25).length };
+    });
+  }
   async get(id: number) {
     const request = await this.prisma.bloodRequest.findFirst({ where: { id, status: RequestStatus.OPEN, expiresAt: { gt: new Date() } }, select: publicFields });
     if (!request) throw new NotFoundException('Active request not found');

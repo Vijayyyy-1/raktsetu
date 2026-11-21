@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowRight, Building2, CheckCircle2, Hand, Loader2, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
+import { AlertTriangle, ArrowRight, Building2, CheckCircle2, Hand, Loader2, Users, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BloodChip, Btn, SPRING, SectionHead, StatusTag, UrgencyTag, VerifiedTag, fadeUp, popIn } from "@/components/bits"
-import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest, type OutreachStatus } from "@/api"
+import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest, type OutreachStatus, type Supply } from "@/api"
 import { CAN_RECEIVE, GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
 import { cn } from "@/lib/utils"
 
@@ -58,6 +58,13 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
     api.me().then(setMe).catch((e) => toast.error(e.message))
     api.myResponses().then(setResponses).catch(() => {})
   }, [readOnly])
+  // Coordinator: eligible-donor coverage per request; refetched whenever the set of requests changes.
+  const [supply, setSupply] = useState<Record<number, Supply>>({})
+  const ids = (requests ?? []).map((r) => r.id).join()
+  useEffect(() => {
+    if (readOnly || !ids) return
+    api.supply().then((rows) => setSupply(Object.fromEntries(rows.map((r) => [r.id, r])))).catch(() => {})
+  }, [readOnly, ids])
   const setResponse = (id: number, s: OutreachStatus | null) => setResponses(({ [id]: _, ...rest }) => (s ? { ...rest, [id]: s } : rest))
   const all = requests ?? []
   const active = all.filter((r) => statusOf(r, now) === "open")
@@ -126,7 +133,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
         <motion.div layout className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {shown.map(({ r, km, canGive }, i) => (
-              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
+              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
             ))}
           </AnimatePresence>
           {shown.length === 0 && <p className="col-span-full py-16 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
@@ -139,6 +146,17 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
 }
 
 const posted = (ms: number) => { const m = Math.floor(ms / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago` }
+
+/** Eligible-donor coverage: red when nobody is within 25 km, amber when 10 km has fewer than two. */
+function SupplyLine({ s }: { s: Supply }) {
+  const tone = s.within25 === 0 ? "bg-blood-soft text-blood" : s.within10 < 2 ? "bg-amber-50 text-amber-900" : "bg-muted/60 text-muted-foreground"
+  const Icon = s.within10 < 2 ? AlertTriangle : Users
+  const text =
+    s.within25 === 0 ? "No eligible donors within 25 km — escalate to a blood bank"
+    : s.within10 === 0 ? `None within 10 km · ${s.within25} within 25 km`
+    : `${s.within10} eligible donor${s.within10 === 1 ? "" : "s"} within 10 km${s.within10 < 2 ? ` · ${s.within25} within 25 km` : ""}`
+  return <div className={cn("mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium", tone)}><Icon className="h-3.5 w-3.5 shrink-0" />{text}</div>
+}
 
 type Filter = "critical" | "verify" | "ready"
 const FILTERS: Record<Filter, (r: LiveRequest) => boolean> = {
@@ -178,8 +196,8 @@ async function share(r: LiveRequest, now: number) {
   }
 }
 
-function RequestCard({ r, i, now, km, canGive, response, onResponse, readOnly, onChange, onMatch }: {
-  r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean; response?: OutreachStatus; onResponse?: (s: OutreachStatus | null) => void
+function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, readOnly, onChange, onMatch }: {
+  r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean; supply?: Supply; response?: OutreachStatus; onResponse?: (s: OutreachStatus | null) => void
 } & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
   const [busy, setBusy] = useState(false)
   const status = statusOf(r, now)
@@ -237,6 +255,8 @@ function RequestCard({ r, i, now, km, canGive, response, onResponse, readOnly, o
           </div>
         </div>
       )}
+
+      {!readOnly && isOpen && supply && <SupplyLine s={supply} />}
 
       {!readOnly && isOpen && r.coming + r.donated > 0 && <div className="mt-4"><Progress req={r} compact /></div>}
 
