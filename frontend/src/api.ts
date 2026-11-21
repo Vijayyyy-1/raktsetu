@@ -49,6 +49,7 @@ export type LiveRequest = {
   responded: number // donors who raised their hand in the app
   coming: number // donors who said they're coming
   donated: number // donors who have donated for this request
+  unitsReceived: number // units arranged outside outreach (blood bank, walk-in)
   closedAt?: number
   verifiedBy?: string | null
 }
@@ -70,11 +71,11 @@ export type DonorProfile = {
 export type Donation = { id: number; donatedAt: string }
 export type Eligibility ={ eligible: boolean; nextEligibleAt: string | null; reason: string; rule: string }
 
-type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string; createdAt: string; responded?: number; coming?: number; donated?: number; status?: string; closedAt?: string; verifiedBy?: string | null }
+type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string; createdAt: string; responded?: number; coming?: number; donated?: number; unitsReceived?: number; status?: string; closedAt?: string; verifiedBy?: string | null }
 const toRequest = (r: ApiRequest, status: RequestStatus = (r.status?.toLowerCase() as RequestStatus) ?? "open"): LiveRequest => ({
   id: r.id, group: toGroup(r.bloodGroup), units: r.units, hospital: r.hospitalName, area: r.area, lat: r.latitude, lng: r.longitude,
   urgency: URG[r.urgency], verified: r.verified, expiresAt: Date.parse(r.expiresAt), createdAt: Date.parse(r.createdAt), status,
-  responded: r.responded ?? 0, coming: r.coming ?? 0, donated: r.donated ?? 0,
+  responded: r.responded ?? 0, coming: r.coming ?? 0, donated: r.donated ?? 0, unitsReceived: r.unitsReceived ?? 0,
   ...(r.closedAt ? { closedAt: Date.parse(r.closedAt), verifiedBy: r.verifiedBy } : {}),
 })
 type ApiDonor = { id: number; displayName: string; bloodGroup: ApiGroup; area: string; latitude: number; longitude: number; available: boolean; phone: string; lastDonationAt: string | null }
@@ -103,6 +104,10 @@ export const api = {
     toRequest(await call<ApiRequest>("POST", "/blood-requests", {
       bloodGroup: fromGroup(r.group), units: r.units, hospitalName: r.hospital, area: r.area, latitude: r.lat, longitude: r.lng,
       urgency: fromUrgency(r.urgency), expiresAt: r.expiresAt.toISOString(),
+    })),
+  updateRequest: async (id: number, p: { units?: number; unitsReceived?: number; urgency?: Urgency; expiresAt?: Date }) =>
+    toRequest(await call<ApiRequest>("PATCH", `/blood-requests/${id}`, {
+      ...p, urgency: p.urgency && fromUrgency(p.urgency), expiresAt: p.expiresAt?.toISOString(),
     })),
   verify: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/verify`)),
   fulfill: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/fulfill`), "fulfilled"),

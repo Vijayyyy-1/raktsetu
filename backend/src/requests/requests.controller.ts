@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole, RequestStatus } from '@prisma/client';
 import { AuthUser, CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../common/auth';
-import { CreateRequestDto, MatchQueryDto, OutreachDto } from './requests.dto';
+import { CreateRequestDto, MatchQueryDto, OutreachDto, UpdateRequestDto } from './requests.dto';
 import { RequestsService } from './requests.service';
 
 @ApiTags('blood requests') @Controller('blood-requests')
@@ -18,6 +18,8 @@ export class RequestsController {
   @Get(':id') get(@Param('id', ParseIntPipe) id: number) { return this.service.get(id); }
   @Post() @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateRequestDto) { return this.service.create(user, dto); }
+  @Patch(':id') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRequestDto) { return this.service.update(id, dto); }
   @Post(':id/verify') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   verify(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.verify(id, user); }
   @Post(':id/matches') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)

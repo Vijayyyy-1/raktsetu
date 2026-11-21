@@ -4,9 +4,9 @@ import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
 import { decrypt } from '../common/crypto';
 import { compatibleDonorGroups, distanceKm, eligible } from '../common/matching';
-import { CreateRequestDto, OutreachDto } from './requests.dto';
+import { CreateRequestDto, OutreachDto, UpdateRequestDto } from './requests.dto';
 
-const publicFields = { id: true, bloodGroup: true, units: true, hospitalName: true, area: true, latitude: true, longitude: true, urgency: true, verified: true, expiresAt: true, createdAt: true } as const;
+const publicFields = { id: true, bloodGroup: true, units: true, hospitalName: true, area: true, latitude: true, longitude: true, urgency: true, verified: true, expiresAt: true, createdAt: true, unitsReceived: true } as const;
 
 type PublicRequest = { id: number };
 
@@ -87,6 +87,20 @@ export class RequestsService {
     const request = await this.requestOrFail(id);
     if (request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is not open');
     return this.one(await this.prisma.bloodRequest.update({ where: { id }, data: { status }, select: publicFields }));
+  }
+  // Coordinator edits an open request. Once donations plus units arranged elsewhere cover the need, it closes as fulfilled.
+  async update(id: number, dto: UpdateRequestDto) {
+    const request = await this.requestOrFail(id);
+    if (request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is not open');
+    const units = dto.units ?? request.units;
+    const unitsReceived = dto.unitsReceived ?? request.unitsReceived;
+    if (unitsReceived > units) throw new BadRequestException('Units received cannot exceed units needed');
+    const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : undefined;
+    if (expiresAt && expiresAt <= new Date()) throw new BadRequestException('expiresAt must be in the future');
+    if (expiresAt && expiresAt.getTime() > Date.now() + 7 * 86400000) throw new BadRequestException('expiresAt can be at most 7 days ahead');
+    const donated = await this.prisma.outreach.count({ where: { requestId: id, status: OutreachStatus.DONATED } });
+    const status = donated + unitsReceived >= units ? RequestStatus.FULFILLED : RequestStatus.OPEN;
+    return this.one(await this.prisma.bloodRequest.update({ where: { id }, data: { units, unitsReceived, urgency: dto.urgency, expiresAt, status }, select: { ...publicFields, status: true } }));
   }
   async outreach(id: number) {
     const request = await this.requestOrFail(id);

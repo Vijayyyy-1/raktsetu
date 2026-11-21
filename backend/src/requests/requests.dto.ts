@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { BloodGroup, OutreachStatus, RequestUrgency } from '@prisma/client';
 import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
@@ -20,4 +20,11 @@ export class MatchQueryDto {
 
 export class OutreachDto {
   @ApiProperty({ enum: OutreachStatus }) @IsEnum(OutreachStatus) status: OutreachStatus;
+}
+
+export class UpdateRequestDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 10 }) @IsOptional() @IsInt() @Min(1) @Max(10) units?: number;
+  @ApiPropertyOptional({ minimum: 0, maximum: 10 }) @IsOptional() @IsInt() @Min(0) @Max(10) unitsReceived?: number;
+  @ApiPropertyOptional({ enum: RequestUrgency }) @IsOptional() @IsEnum(RequestUrgency) urgency?: RequestUrgency;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() expiresAt?: string;
 }

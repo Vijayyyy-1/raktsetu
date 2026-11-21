@@ -93,6 +93,7 @@ model BloodRequest {
   id                Int           @id @default(autoincrement())
   bloodGroup        BloodGroup
   units             Int           @default(1)
+  unitsReceived     Int           @default(0) // arranged outside outreach (blood bank, walk-in)
   hospitalName      String
   area              String
   latitude          Float

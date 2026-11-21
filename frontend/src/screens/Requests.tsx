@@ -26,15 +26,16 @@ export function Countdown({ at, now, className }: { at: number; now: number; cla
 /** Units covered: donated (solid) and pledged (lighter), out of the units the request needs. */
 export function Progress({ req, compact }: { req: LiveRequest; compact?: boolean }) {
   const pct = (n: number) => `${Math.min(100, (n / req.units) * 100)}%`
+  const received = req.donated + req.unitsReceived
   return (
     <div className={compact ? "" : "mb-4 rounded-2xl bg-muted/60 p-4"}>
       <div className="mb-1.5 flex justify-between text-xs">
-        <span className="text-muted-foreground"><b className="text-ok">{req.donated} donated</b> · <b className="text-blood">{req.coming} coming</b></span>
+        <span className="text-muted-foreground"><b className="text-ok">{received} received</b> · <b className="text-blood">{req.coming} coming</b></span>
         <span className="font-semibold">of {req.units} unit{req.units > 1 && "s"}</span>
       </div>
       <div className="relative h-1.5 overflow-hidden rounded-full bg-white">
-        <motion.div className="absolute inset-y-0 left-0 rounded-full bg-blood/35" animate={{ width: pct(req.donated + req.coming) }} />
-        <motion.div className="absolute inset-y-0 left-0 rounded-full bg-ok" animate={{ width: pct(req.donated) }} />
+        <motion.div className="absolute inset-y-0 left-0 rounded-full bg-blood/35" animate={{ width: pct(received + req.coming) }} />
+        <motion.div className="absolute inset-y-0 left-0 rounded-full bg-ok" animate={{ width: pct(received) }} />
       </div>
     </div>
   )
@@ -222,6 +223,7 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
   r: LiveRequest; i: number; now: number; km?: number; canGive?: boolean; supply?: Supply; response?: OutreachStatus; onResponse?: (s: OutreachStatus | null) => void
 } & Pick<Props, "readOnly" | "onChange" | "onMatch">) {
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
   const status = statusOf(r, now)
   const isOpen = status === "open"
   // Share of the request's own lifetime left; under an hour is "closing soon" whatever the urgency.
@@ -290,7 +292,7 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
         </div>
       )}
 
-      {!readOnly && isOpen && r.coming + r.donated > 0 && <div className="mt-4"><Progress req={r} compact /></div>}
+      {!readOnly && isOpen && r.coming + r.donated + r.unitsReceived > 0 && <div className="mt-4"><Progress req={r} compact /></div>}
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <VerifiedTag verified={r.verified} />
@@ -337,13 +339,94 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="rounded-2xl p-1.5">
+              <DropdownMenuItem className="rounded-xl" onClick={() => setEditing(true)}>Edit / record units</DropdownMenuItem>
               <DropdownMenuItem className="rounded-xl" onClick={() => act(api.fulfill, `${requestLabel(r.id)} fulfilled`)}>Mark as fulfilled</DropdownMenuItem>
               <DropdownMenuItem className="rounded-xl" onClick={() => act(api.cancel, `${requestLabel(r.id)} cancelled`)}>Cancel request</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       )}
+      {!readOnly && editing && <EditRequestDialog r={r} now={now} open={editing} onOpenChange={setEditing} onSaved={onChange} />}
     </motion.article>
+  )
+}
+
+function EditRequestDialog({ r, now, open, onOpenChange, onSaved }: { r: LiveRequest; now: number; open: boolean; onOpenChange: (o: boolean) => void; onSaved: (r: LiveRequest) => void }) {
+  const [units, setUnits] = useState(r.units)
+  const [received, setReceived] = useState(r.unitsReceived)
+  const [urgency, setUrgency] = useState<Urgency>(r.urgency)
+  const [extendH, setExtendH] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const expiresAt = r.expiresAt + extendH * 3600_000
+  const covered = r.donated + received >= units
+
+  const submit = async () => {
+    setBusy(true)
+    try {
+      const next = await api.updateRequest(r.id, { units, unitsReceived: received, urgency, ...(extendH ? { expiresAt: new Date(expiresAt) } : {}) })
+      onSaved(next)
+      toast.success(next.status === "fulfilled" ? `${requestLabel(r.id)} is fully covered and closed` : `${requestLabel(r.id)} updated`)
+      onOpenChange(false)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="rounded-[32px] border-0 p-8 sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-display text-3xl font-medium">Edit {requestLabel(r.id)}</DialogTitle>
+          <DialogDescription>{r.group} at {r.hospital}.{r.donated > 0 && ` ${r.donated} donated through outreach so far.`}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 pt-2">
+          <div className="grid grid-cols-2 gap-4">
+            <Stepper label="Units needed" value={units} min={Math.max(1, received)} max={10} onChange={setUnits} />
+            <Stepper label="Received elsewhere" hint="blood bank, walk-in" value={received} min={0} max={units} onChange={setReceived} />
+          </div>
+
+          <div>
+            <div className="mb-2 text-sm font-semibold">Urgency</div>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(WINDOW) as Urgency[]).map((u) => (
+                <button key={u} onClick={() => setUrgency(u)} className={cn("rounded-2xl p-3 text-sm font-semibold capitalize ring-2 transition-all", urgency === u ? "bg-blood-soft ring-blood" : "bg-muted ring-transparent hover:bg-secondary")}>{u}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 text-sm font-semibold">Extend closing time <span className="font-normal text-muted-foreground">· closes in <Countdown at={expiresAt} now={now} /></span></div>
+            <div className="grid grid-cols-4 gap-2">
+              {[0, 1, 6, 24].map((h) => (
+                <button key={h} onClick={() => setExtendH(h)} className={cn("rounded-2xl p-3 text-sm font-semibold ring-2 transition-all", extendH === h ? "bg-blood-soft ring-blood" : "bg-muted ring-transparent hover:bg-secondary")}>{h ? `+${h} h` : "Keep"}</button>
+              ))}
+            </div>
+          </div>
+
+          {covered && <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-ok">This covers all {units} units, so saving closes the request as fulfilled.</p>}
+
+          <Btn size="lg" className="w-full" onClick={submit} disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : covered ? "Save and close" : "Save changes"}
+          </Btn>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function Stepper({ label, hint, value, min, max, onChange }: { label: string; hint?: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
+  return (
+    <div>
+      <div className="mb-2 text-sm font-semibold">{label}{hint && <span className="font-normal text-muted-foreground"> · {hint}</span>}</div>
+      <div className="flex h-12 w-fit items-center gap-1 rounded-full bg-muted p-1">
+        <button onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} className="h-10 w-10 rounded-full bg-white text-lg shadow-sm disabled:opacity-40" aria-label={`Decrease ${label}`}>−</button>
+        <span className="w-8 text-center font-display text-xl font-semibold tabular-nums">{value}</span>
+        <button onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} className="h-10 w-10 rounded-full bg-white text-lg shadow-sm disabled:opacity-40" aria-label={`Increase ${label}`}>+</button>
+      </div>
+    </div>
   )
 }
 
