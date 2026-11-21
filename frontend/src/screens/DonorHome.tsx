@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { BellRing, Building2, CalendarHeart, Loader2, MapPin, ShieldCheck } from "lucide-react"
+import { BellRing, Building2, CalendarDays, CalendarHeart, Loader2, MapPin, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { BloodChip, Btn, EstimateNote, SPRING, SectionHead, fadeUp, popIn } from "@/components/bits"
 import { api, distanceKm, requestLabel, type DonorProfile, type Eligibility, type LiveRequest } from "@/api"
 import { CAN_RECEIVE, MONTHLY_SUPPLY } from "@/data"
@@ -15,6 +17,8 @@ export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; n
   const [me, setMe] = useState<DonorProfile | null>(null)
   const [elig, setElig] = useState<Eligibility | null>(null)
   const [saving, setSaving] = useState(false)
+  const [day, setDay] = useState<Date | undefined>(() => new Date())
+  const [pickOpen, setPickOpen] = useState(false)
 
   const load = () => Promise.all([api.me(), api.eligibility()]).then(([m, e]) => (setMe(m), setElig(e)))
   useEffect(() => void load().catch((e) => toast.error(e.message)), [])
@@ -99,9 +103,22 @@ export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; n
             </div>
             <Switch checked={me.available} disabled={saving} onCheckedChange={(v) => save({ available: v }, v ? "You're back on the list" : "Paused — we won't match you")} />
           </div>
-          <Btn variant="soft" size="lg" className="mt-3 w-full" disabled={saving || daysSince === 0} onClick={() => save({ lastDonationAt: new Date().toISOString() }, "Thank you! We'll stay quiet while you recover.")}>
-            <CalendarHeart className="h-4 w-4" /> I donated today
-          </Btn>
+          <div className="mt-3 flex gap-2">
+            <Popover open={pickOpen} onOpenChange={setPickOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" aria-label="Donation date" className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full border border-input bg-white px-4 text-sm transition-colors hover:border-blood/40">
+                  <CalendarDays className="h-4 w-4 shrink-0 text-blood" />
+                  <span className="truncate">{day ? day.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Pick a date"}</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto rounded-2xl p-0">
+                <Calendar mode="single" selected={day} defaultMonth={day} captionLayout="dropdown" startMonth={new Date(2000, 0)} endMonth={new Date()} disabled={{ after: new Date() }} onSelect={(d) => (setDay(d), setPickOpen(false))} />
+              </PopoverContent>
+            </Popover>
+            <Btn variant="soft" size="lg" disabled={saving || !day} onClick={() => day && save({ lastDonationAt: day.toISOString() }, "Thank you! We'll stay quiet while you recover.")}>
+              <CalendarHeart className="h-4 w-4" /> I donated
+            </Btn>
+          </div>
           <EstimateNote className="mt-4" />
         </motion.div>
 
