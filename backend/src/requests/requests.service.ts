@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BloodRequest, OutreachStatus, RequestStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
@@ -9,9 +9,12 @@ import { CreateRequestDto, OutreachDto, UpdateRequestDto } from './requests.dto'
 const publicFields = { id: true, bloodGroup: true, units: true, hospitalName: true, area: true, latitude: true, longitude: true, urgency: true, verified: true, expiresAt: true, createdAt: true, unitsReceived: true } as const;
 
 type PublicRequest = { id: number };
+// Donor positions leave the API rounded to ~1 km, whatever precision was stored.
+const approx = (n: number) => Math.round(n * 100) / 100;
 
 @Injectable()
 export class RequestsService {
+  private audit = new Logger('ContactAudit');
   constructor(private prisma: PrismaService) {}
   // Attach outreach progress (donors coming / donated) so every response carries the same shape.
   private async withProgress<T extends PublicRequest>(requests: T[]) {
@@ -76,12 +79,24 @@ export class RequestsService {
   async match(id: number, maxDistanceKm = 50) {
     const request = await this.requestOrFail(id);
     if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified before matching');
-    const donors = await this.prisma.donor.findMany({ where: { available: true, bloodGroup: { in: compatibleDonorGroups(request.bloodGroup) }, account: { isActive: true, role: UserRole.DONOR } }, include: { account: { select: { email: true } } } });
+    const donors = await this.prisma.donor.findMany({ where: { available: true, bloodGroup: { in: compatibleDonorGroups(request.bloodGroup) }, account: { isActive: true, role: UserRole.DONOR } }, });
     const now = new Date();
     return donors.map((donor) => ({ donor, distance: distanceKm(request.latitude, request.longitude, donor.latitude, donor.longitude) }))
       .filter(({ donor, distance }) => eligible(donor.lastDonationAt, now) && distance <= maxDistanceKm)
       .sort((a, b) => a.distance - b.distance)
-      .map(({ donor, distance }) => ({ donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, distanceKm: Math.round(distance * 10) / 10, email: donor.account.email, phone: decrypt(donor.phoneEncrypted), eligibility: 'Estimated eligible; must be confirmed with the donor and medical staff.' }));
+      .map(({ donor, distance }) => ({ donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, latitude: approx(donor.latitude), longitude: approx(donor.longitude), distanceKm: Math.round(distance * 10) / 10, eligibility: 'Estimated eligible; must be confirmed with the donor and medical staff.' }));
+  }
+  // Contact details are released one donor at a time, on purpose, and logged — never in bulk with match results.
+  async contact(id: number, donorId: number, user: AuthUser) {
+    const request = await this.requestOrFail(id);
+    if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified');
+    const donor = await this.prisma.donor.findUnique({ where: { id: donorId }, include: { account: { select: { email: true, isActive: true } } } });
+    const existing = await this.prisma.outreach.findUnique({ where: { requestId_donorId: { requestId: id, donorId } } });
+    const isMatch = donor && donor.account.isActive && donor.available && compatibleDonorGroups(request.bloodGroup).includes(donor.bloodGroup) && eligible(donor.lastDonationAt);
+    if (!donor || (!isMatch && !existing)) throw new NotFoundException('This donor is not a match for this request');
+    this.audit.log(`contact revealed: coordinator=${user.sub} donor=${donorId} request=${id}`);
+    const consented = existing?.status === OutreachStatus.RESPONDED || existing?.status === OutreachStatus.COMING;
+    return { donorId, email: donor.account.email, phone: decrypt(donor.phoneEncrypted), raisedHand: consented };
   }
   async close(id: number, status: RequestStatus) {
     const request = await this.requestOrFail(id);
@@ -106,7 +121,7 @@ export class RequestsService {
     const request = await this.requestOrFail(id);
     const rows = await this.prisma.outreach.findMany({ where: { requestId: id }, include: { donor: { include: { account: { select: { email: true } } } } }, orderBy: { updatedAt: 'desc' } });
     return rows.map(({ donor, status, updatedAt }) => ({
-      donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, status, updatedAt,
+      donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, latitude: approx(donor.latitude), longitude: approx(donor.longitude), status, updatedAt,
       distanceKm: Math.round(distanceKm(request.latitude, request.longitude, donor.latitude, donor.longitude) * 10) / 10,
       email: donor.account.email, phone: decrypt(donor.phoneEncrypted),
     }));

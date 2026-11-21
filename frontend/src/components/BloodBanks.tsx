@@ -25,7 +25,7 @@ export function BloodBanksNear({ at, title, sub, footer, className }: { at: { la
     <section className={className}>
       <h2 className="text-3xl font-medium">{title}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
         {banks === null
           ? [0, 1].map((i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-white/60" />)
           : banks.length === 0

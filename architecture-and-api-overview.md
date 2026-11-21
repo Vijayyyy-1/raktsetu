@@ -141,7 +141,7 @@ Example availability update or opt-out from matching:
 { "available": false }
 ```
 
-To update the last donation date, include `lastDonationAt` as an ISO date-time string. The estimate uses a 56-day interval. A missing date is treated as unknown and is not considered eligible; the current model does not separately represent a first-time donor.
+To update the last donation date, include `lastDonationAt` as an ISO date-time string. The estimate uses a 56-day interval. A missing date is treated as a first-time donor, who is estimated eligible.
 
 The eligibility response contains `eligible`, `nextEligibleAt`, `reason`, and `rule`. Donor profile responses contain profile fields and the donor's decrypted phone number; do not place that response in shared or public state.
 
@@ -153,7 +153,8 @@ The eligibility response contains `eligible`, `nextEligibleAt`, `reason`, and `r
 | `GET /v1/blood-requests/:id` | Public | Get one open, unexpired request |
 | `POST /v1/blood-requests` | Coordinator | Create an open, unverified request |
 | `POST /v1/blood-requests/:id/verify` | Coordinator | Verify an open request and record verifier/time |
-| `POST /v1/blood-requests/:id/matches?maxDistanceKm=50` | Coordinator | Calculate and return matching donor candidates |
+| `POST /v1/blood-requests/:id/matches?maxDistanceKm=50` | Coordinator | Calculate and return matching donor candidates (no contact details) |
+| `POST /v1/blood-requests/:id/matches/:donorId/contact` | Coordinator | Release one matched donor's phone and email; each call is audit-logged |
 | `POST /v1/blood-requests/:id/fulfill` | Coordinator | Mark an open request fulfilled |
 | `POST /v1/blood-requests/:id/cancel` | Coordinator | Cancel an open request |
 
@@ -172,7 +173,7 @@ Create-request body:
 }
 ```
 
-Request IDs in paths are integers. Matching requires the request to be open, verified, and unexpired. It filters donors by active account, `available=true`, compatible blood group, a known last donation date at least 56 days old, and distance within `maxDistanceKm` (50 km by default). Distance is straight-line Haversine distance. Results are sorted nearest first and include donor ID, display name, blood group, area, rounded distance, email, phone, and an eligibility estimate.
+Request IDs in paths are integers. Matching requires the request to be open, verified, and unexpired. It filters donors by active account, `available=true`, compatible blood group, a known last donation date at least 56 days old, and distance within `maxDistanceKm` (50 km by default). Distance is straight-line Haversine distance. Results are sorted nearest first and include donor ID, display name, blood group, area, approximate coordinates, rounded distance, and an eligibility estimate. Contact details are not included; the coordinator requests them one donor at a time through the contact endpoint, which is logged.
 
 Match response example:
 

@@ -60,7 +60,7 @@ export class DonorsService {
     return {
       eligible: eligibleNow,
       nextEligibleAt,
-      reason: donor.lastDonationAt ? 'Eligibility is estimated from the recorded last donation date.' : 'Last donation date is not recorded, so this prototype does not mark the donor eligible.',
+      reason: donor.lastDonationAt ? 'Eligibility is estimated from the recorded last donation date.' : 'No donation recorded yet, so you are treated as a first-time donor and estimated eligible.',
       rule: `Estimated ${DONATION_WAIT_DAYS}-day interval since last donation; confirm eligibility with qualified medical staff.`,
     };
   }

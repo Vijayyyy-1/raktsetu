@@ -24,6 +24,8 @@ export class RequestsController {
   verify(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.verify(id, user); }
   @Post(':id/matches') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   match(@Param('id', ParseIntPipe) id: number, @Query() query: MatchQueryDto) { return this.service.match(id, query.maxDistanceKm); }
+  @Post(':id/matches/:donorId/contact') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  contact(@Param('id', ParseIntPipe) id: number, @Param('donorId', ParseIntPipe) donorId: number, @CurrentUser() user: AuthUser) { return this.service.contact(id, donorId, user); }
   @Post(':id/respond') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)
   respond(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.respond(id, user); }
   @Delete(':id/respond') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)

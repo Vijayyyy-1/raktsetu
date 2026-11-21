@@ -1,10 +1,10 @@
 # Backend Issues
 
-Review of `backend/` (NestJS + Prisma API), 21 Nov 2026. Found by reading the code and exercising the API locally; none of these are fixed yet.
+Review of `backend/` (NestJS + Prisma API), 21 Nov 2026. Found by reading the code and exercising the API locally. Fixed items are marked ✅.
 
 ## Correctness — fix before the demo
 
-### 1. First-time donors are never matched
+### 1. First-time donors are never matched — ✅ fixed
 - **Where:** `backend/src/common/matching.ts` → `eligible()`
 - **Problem:** a donor with no `lastDonationAt` is treated as *not eligible*. Most students have never donated, so a college registry would match almost no one. The sign-up form allows leaving the date empty.
 - **Fix:** treat a missing date as eligible:
@@ -25,7 +25,7 @@ Review of `backend/` (NestJS + Prisma API), 21 Nov 2026. Found by reading the co
 
 ## Privacy
 
-### 4. Match results expose every donor's phone and email
+### 4. Match results expose every donor's phone and email — ✅ fixed (contact released per donor via `POST /v1/blood-requests/:id/matches/:donorId/contact`, logged)
 - **Where:** `backend/src/requests/requests.service.ts` → `match()`
 - **Problem:** the plan says contact details should only be released through a separate, deliberate action. Today every match returns decrypted phone + email. The frontend only hides them on screen; the browser already has them.
 - **Fix:** remove `phone`/`email` from match results; add `POST /v1/blood-requests/:id/matches/:donorId/contact` (coordinator only) that returns one donor's contact and logs who asked and when.

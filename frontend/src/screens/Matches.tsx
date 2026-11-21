@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, Loader2, Lock, Mail, Phone } from "lucide-react"
 import { toast } from "sonner"
@@ -6,9 +6,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Slider } from "@/components/ui/slider"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { BloodChip, Btn, Drop, EstimateNote, SPRING, UrgencyTag, VerifiedTag, fadeUp } from "@/components/bits"
-import { api, requestLabel, type LiveRequest, type Match, type Outreach, type OutreachStatus } from "@/api"
-import { CAN_RECEIVE, maskPhone } from "@/data"
+import { api, requestLabel, type Contact, type LiveRequest, type Match, type Outreach, type OutreachStatus } from "@/api"
+import { CAN_RECEIVE } from "@/data"
 import { Countdown, Progress } from "./Requests"
+import { DonorsMap } from "@/components/DonorsMap"
 import { BloodBanksNear, ERAKTKOSH, ExtLink } from "@/components/BloodBanks"
 import { cn } from "@/lib/utils"
 
@@ -19,11 +20,27 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
   const [query, setQuery] = useState(10) // radius actually sent to the API (on slider release)
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [reveal, setReveal] = useState<Match | null>(null)
-  const [revealed, setRevealed] = useState<Record<number, true>>({})
+  const [revealed, setRevealed] = useState<Record<number, Contact>>({})
+  const [revealing, setRevealing] = useState(false)
+  // Contacts come from the API one donor at a time (logged server-side), not with the match list.
+  const showContact = async () => {
+    if (!reveal) return
+    setRevealing(true)
+    try {
+      const c = await api.contact(req.id, reveal.donorId)
+      setRevealed((p) => ({ ...p, [c.donorId]: c }))
+      setReveal(null)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setRevealing(false)
+    }
+  }
   const [closing, setClosing] = useState(false)
   const [done, setDone] = useState(false)
   const [outreach, setOutreach] = useState<Outreach[]>([])
-  const status = Object.fromEntries(outreach.map((o) => [o.donorId, o.status])) as Record<number, OutreachStatus>
+  const [focus, setFocus] = useState<number | null>(null) // donor highlighted on map + list
+  const status = useMemo(() => Object.fromEntries(outreach.map((o) => [o.donorId, o.status])) as Record<number, OutreachStatus>, [outreach])
 
   useEffect(() => void api.outreach(req.id).then(setOutreach).catch((e) => toast.error(e.message)), [req.id])
 
@@ -55,8 +72,16 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
     }
   }
 
-  const worked = outreach.filter((o) => !matches?.some((m) => m.donorId === o.donorId)).map((o) => ({ ...o, eligibility: "" }))
-  const list: Match[] = [...(matches ?? []), ...worked].sort((a, b) => Number(status[b.donorId] === "responded") - Number(status[a.donorId] === "responded"))
+  // Memoised: the page re-renders every second for the countdown and the map must not redraw with it.
+  const list: Match[] = useMemo(() => {
+    const raised = new Set(outreach.filter((o) => o.status === "responded").map((o) => o.donorId))
+    const worked = outreach.filter((o) => !matches?.some((m) => m.donorId === o.donorId)).map((o) => ({ ...o, eligibility: "" }))
+    return [...(matches ?? []), ...worked].sort((a, b) => Number(raised.has(b.donorId)) - Number(raised.has(a.donorId)))
+  }, [matches, outreach])
+  const pickDot = (id: number | null) => {
+    setFocus(id)
+    if (id !== null) document.getElementById(`donor-${id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+  }
 
   const checks = [
     `Blood group can give to ${req.group} (${CAN_RECEIVE[req.group].join(", ")})`,
@@ -73,9 +98,9 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
 
       <div className="soft-card flex flex-wrap items-center gap-5 p-6">
         <BloodChip group={req.group} size="lg" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[12rem] flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-4xl font-medium">{req.units} units of {req.group}</h1>
+            <h1 className="text-3xl font-medium sm:text-4xl">{req.units} units of {req.group}</h1>
             <UrgencyTag u={req.urgency} />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
@@ -85,17 +110,25 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
           </div>
         </div>
         {!done && (
-          <div className="rounded-2xl bg-blood-soft px-5 py-3 text-right">
+          <div className="rounded-2xl bg-blood-soft px-5 py-3 text-right max-sm:w-full max-sm:text-left">
             <div className="text-xs text-blood/80">Closes in</div>
             <Countdown at={req.expiresAt} now={now} className="font-display text-2xl font-medium text-blood" />
           </div>
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
         <div className="soft-card p-6">
           <h2 className="text-2xl font-medium">Who's nearby</h2>
-          <Radar radius={radius} matches={matches ?? []} loading={matches === null} />
+          <DonorsMap
+            at={{ lat: req.lat, lng: req.lng }}
+            radiusKm={radius}
+            donors={list}
+            status={status}
+            focus={focus}
+            onFocus={pickDot}
+            fallback={<Radar radius={radius} matches={matches ?? []} loading={matches === null} />}
+          />
 
           <ol className="space-y-1">
             {checks.map((c, i) => (
@@ -139,26 +172,29 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
               {list.map((d, i) => (
                 <motion.li
                   key={d.donorId}
+                  id={`donor-${d.donorId}`}
+                  onMouseEnter={() => setFocus(d.donorId)}
+                  onMouseLeave={() => setFocus(null)}
                   layout
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ ...SPRING, delay: i * 0.05 }}
-                  className={cn("flex items-center gap-4 rounded-2xl p-3", revealed[d.donorId] ? "bg-emerald-50" : "bg-muted/60")}
+                  className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl p-3 ring-2 transition-shadow", revealed[d.donorId] ? "bg-emerald-50" : "bg-muted/60", focus === d.donorId ? "ring-foreground/70" : "ring-transparent")}
                 >
                   <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white font-display text-sm font-semibold text-blood shadow-sm">{initials(d.name)}</div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-[9rem] flex-1">
                     <div className="truncate font-semibold">{d.name} <span className="ml-1 text-xs font-medium text-blood">{d.group}</span></div>
                     <div className="truncate text-xs text-muted-foreground">{d.area} · {d.km} km away</div>
                   </div>
                   <StatusPicker value={status[d.donorId]} onPick={(s) => track(d, s)} />
                   {revealed[d.donorId] ? (
                     <div className="text-right text-sm">
-                      <a href={`tel:${d.phone}`} className="flex items-center justify-end gap-1.5 font-semibold text-ok hover:underline"><Phone className="h-3.5 w-3.5" />{d.phone}</a>
-                      <a href={`mailto:${d.email}`} className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground hover:underline"><Mail className="h-3 w-3" />{d.email}</a>
+                      <a href={`tel:${revealed[d.donorId].phone}`} className="flex items-center justify-end gap-1.5 font-semibold text-ok hover:underline"><Phone className="h-3.5 w-3.5" />{revealed[d.donorId].phone}</a>
+                      <a href={`mailto:${revealed[d.donorId].email}`} className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground hover:underline"><Mail className="h-3 w-3" />{revealed[d.donorId].email}</a>
                     </div>
                   ) : (
                     <>
-                      <span className="hidden font-mono text-xs text-muted-foreground sm:block">{maskPhone(d.phone)}</span>
+                      <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex"><Lock className="h-3 w-3" />Number hidden</span>
                       <Btn variant="dark" className="h-9 px-3 text-xs" onClick={() => setReveal(d)}><Phone className="h-3.5 w-3.5" />Contact</Btn>
                     </>
                   )}
@@ -184,12 +220,12 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
             <div className="mb-2 grid h-12 w-12 place-items-center rounded-2xl bg-blood-soft text-blood"><Lock className="h-5 w-5" /></div>
             <DialogTitle className="font-display text-2xl font-medium">Contact {reveal?.name}?</DialogTitle>
             <DialogDescription>
-              Use this only to coordinate {requestLabel(req.id)}. Don't forward or save the number anywhere else.
+              Use this only to coordinate {requestLabel(req.id)}. Don't forward or save the number anywhere else. This access is logged.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
             <Btn variant="ghost" onClick={() => setReveal(null)}>Not now</Btn>
-            <Btn onClick={() => (setRevealed((p) => ({ ...p, [reveal!.donorId]: true })), setReveal(null))}><Phone className="h-4 w-4" />Show contact</Btn>
+            <Btn disabled={revealing} onClick={showContact}>{revealing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}Show contact</Btn>
           </div>
         </DialogContent>
       </Dialog>

@@ -55,8 +55,9 @@ export type LiveRequest = {
 }
 export type Supply = { id: number; within10: number; within25: number }
 export type OutreachStatus = "responded" | "called" | "no_answer" | "coming" | "declined" | "donated"
-export type Outreach = { donorId: number; name: string; group: Group; area: string; km: number; email: string; phone: string; status: OutreachStatus; updatedAt: number }
-export type Match = { donorId: number; name: string; group: Group; area: string; km: number; email: string; phone: string; eligibility: string }
+export type Outreach = { donorId: number; name: string; group: Group; area: string; lat: number; lng: number; km: number; email: string; phone: string; status: OutreachStatus; updatedAt: number }
+export type Match = { donorId: number; name: string; group: Group; area: string; lat: number; lng: number; km: number; eligibility: string }
+export type Contact = { donorId: number; email: string; phone: string; raisedHand: boolean }
 export type DonorProfile = {
   id: number
   name: string
@@ -112,12 +113,14 @@ export const api = {
   verify: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/verify`)),
   fulfill: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/fulfill`), "fulfilled"),
   cancel: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/cancel`), "cancelled"),
+  // Released one donor at a time and logged by the API.
+  contact: (id: number, donorId: number) => call<Contact>("POST", `/blood-requests/${id}/matches/${donorId}/contact`),
   matches: async (id: number, maxDistanceKm: number) =>
-    (await call<(Omit<Match, "name" | "group" | "km"> & { displayName: string; bloodGroup: ApiGroup; distanceKm: number })[]>("POST", `/blood-requests/${id}/matches?maxDistanceKm=${maxDistanceKm}`))
-      .map((m) => ({ donorId: m.donorId, name: m.displayName, group: toGroup(m.bloodGroup), area: m.area, km: m.distanceKm, email: m.email, phone: m.phone, eligibility: m.eligibility })),
+    (await call<(Omit<Match, "name" | "group" | "km" | "lat" | "lng"> & { displayName: string; bloodGroup: ApiGroup; distanceKm: number; latitude: number; longitude: number })[]>("POST", `/blood-requests/${id}/matches?maxDistanceKm=${maxDistanceKm}`))
+      .map((m) => ({ donorId: m.donorId, name: m.displayName, group: toGroup(m.bloodGroup), area: m.area, lat: m.latitude, lng: m.longitude, km: m.distanceKm, eligibility: m.eligibility })),
   outreach: async (id: number) =>
-    (await call<{ donorId: number; displayName: string; bloodGroup: ApiGroup; area: string; distanceKm: number; email: string; phone: string; status: string; updatedAt: string }[]>("GET", `/blood-requests/${id}/outreach`))
-      .map((o) => ({ donorId: o.donorId, name: o.displayName, group: toGroup(o.bloodGroup), area: o.area, km: o.distanceKm, email: o.email, phone: o.phone, status: o.status.toLowerCase() as OutreachStatus, updatedAt: Date.parse(o.updatedAt) })),
+    (await call<{ donorId: number; displayName: string; bloodGroup: ApiGroup; area: string; latitude: number; longitude: number; distanceKm: number; email: string; phone: string; status: string; updatedAt: string }[]>("GET", `/blood-requests/${id}/outreach`))
+      .map((o) => ({ donorId: o.donorId, name: o.displayName, group: toGroup(o.bloodGroup), area: o.area, lat: o.latitude, lng: o.longitude, km: o.distanceKm, email: o.email, phone: o.phone, status: o.status.toLowerCase() as OutreachStatus, updatedAt: Date.parse(o.updatedAt) })),
   setOutreach: async (id: number, donorId: number, status: OutreachStatus) =>
     toRequest(await call<ApiRequest>("PUT", `/blood-requests/${id}/outreach/${donorId}`, { status: status.toUpperCase() })),
   closedRequests: async () => (await call<ApiRequest[]>("GET", "/blood-requests/closed")).map((r) => toRequest(r)),

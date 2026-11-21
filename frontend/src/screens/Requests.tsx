@@ -99,7 +99,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
     : [{ id: "active", label: `Open · ${active.length}` }, { id: "closed", label: tab === "closed" ? `Closed · ${closed.length}` : "Closed" }]
 
   return (
-    <motion.div {...fadeUp} className="space-y-8">
+    <motion.div {...fadeUp} className="space-y-6">
       <SectionHead
         kicker={readOnly ? "Near you" : "Coordinator desk"}
         title={readOnly ? <>Who needs <span className="italic text-blood">help</span> today</> : <>{active.length} {active.length === 1 ? "request is" : "requests are"} <span className="italic text-blood">open</span></>}
@@ -112,7 +112,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
       </SectionHead>
 
       {!readOnly && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat i={0} big={active.filter(FILTERS.critical).length} label="critical right now" tone="bg-blood text-white" active={filter === "critical"} onClick={() => pickFilter("critical")} />
           <Stat i={1} big={active.filter(FILTERS.verify).length} label="need verifying" tone="bg-peach text-[#7a3a14]" active={filter === "verify"} onClick={() => pickFilter("verify")} />
           <Stat i={2} big={active.filter(FILTERS.ready).length} label="ready to match" tone="bg-white" active={filter === "ready"} onClick={() => pickFilter("ready")} />
@@ -148,17 +148,17 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
       {!readOnly && tab === "active" && view === "map" && requests !== null ? (
         <RequestsMap requests={triage} supply={supply} onMatch={onMatch} />
       ) : requests === null ? (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2].map((i) => <div key={i} className="h-72 animate-pulse rounded-[28px] bg-white/60" />)}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => <div key={i} className="h-64 animate-pulse rounded-[28px] bg-white/60" />)}
         </div>
       ) : (
-        <motion.div layout className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <motion.div layout className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {shown.map(({ r, km, canGive }, i) => (
               <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
             ))}
           </AnimatePresence>
-          {shown.length === 0 && <p className="col-span-full py-16 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
+          {shown.length === 0 && <p className="col-span-full py-12 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
         </motion.div>
       )}
 
@@ -178,7 +178,7 @@ function SupplyLine({ s }: { s: Supply }) {
     s.within25 === 0 ? "No eligible donors within 25 km — escalate to a blood bank"
     : s.within10 === 0 ? `None within 10 km · ${s.within25} within 25 km`
     : `${s.within10} eligible donor${s.within10 === 1 ? "" : "s"} within 10 km${s.within10 < 2 ? ` · ${s.within25} within 25 km` : ""}`
-  return <div className={cn("mt-4 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium", tone)}><Icon className="h-3.5 w-3.5 shrink-0" />{text}</div>
+  return <div className={cn("flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium", tone)}><Icon className="h-3.5 w-3.5 shrink-0" />{text}</div>
 }
 
 type Filter = "critical" | "verify" | "ready"
@@ -198,10 +198,10 @@ function Stat({ i, big, label, tone, active, onClick }: { i: number; big: number
       aria-pressed={onClick ? !!active : undefined}
       onClick={onClick}
       whileHover={onClick ? { y: -3 } : undefined}
-      className={cn("rounded-[24px] p-5 text-left shadow-[0_10px_30px_-16px_hsl(0_60%_40%/0.25)] transition-shadow disabled:cursor-default", tone, active && "ring-2 ring-foreground ring-offset-2 ring-offset-background")}
+      className={cn("rounded-[22px] px-5 py-4 text-left shadow-[0_10px_30px_-16px_hsl(0_60%_40%/0.25)] transition-shadow disabled:cursor-default", tone, active && "ring-2 ring-foreground ring-offset-2 ring-offset-background")}
     >
-      <div className="font-display text-4xl font-medium tabular-nums">{big}</div>
-      <div className="mt-1 text-sm opacity-80">{label}</div>
+      <div className="font-display text-3xl font-medium leading-none tabular-nums">{big}</div>
+      <div className="mt-1.5 text-sm opacity-80">{label}</div>
     </motion.button>
   )
 }
@@ -250,10 +250,10 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
       {...popIn(i)}
       exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
       whileHover={isOpen ? { y: -4 } : undefined}
-      className={cn("soft-card flex flex-col p-6", !isOpen && "opacity-70 saturate-50")}
+      className={cn("soft-card flex flex-col gap-4 p-5", !isOpen && "opacity-70 saturate-50")}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <BloodChip group={r.group} />
           <div>
             <div className="font-display text-2xl font-medium">{r.units} unit{r.units > 1 && "s"}</div>
@@ -263,13 +263,18 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
         {isOpen ? <UrgencyTag u={r.urgency} /> : <StatusTag s={status} />}
       </div>
 
-      <div className="mt-5 space-y-1.5 text-sm">
-        <div className="flex items-center gap-2 font-medium"><Building2 className="h-4 w-4 text-blood/70" />{r.hospital}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="h-4 w-4" />{r.area}{km !== undefined && ` · ${km} km away`}</div>
+      <div className="space-y-1.5 text-sm">
+        <div className="flex items-center gap-2 font-medium"><Building2 className="h-4 w-4 shrink-0 text-blood/70" /><span className="truncate">{r.hospital}</span></div>
+        <div className="flex items-center gap-2 text-muted-foreground"><MapPin className="h-4 w-4 shrink-0" /><span className="truncate">{r.area}{km !== undefined && ` · ${km} km away`}</span></div>
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <VerifiedTag verified={r.verified} />
+          {!readOnly && isOpen && r.responded > 0 && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">✋ {r.responded} raised {r.responded === 1 ? "a hand" : "hands"}</span>}
+          {readOnly && canGive === false && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Not your blood group</span>}
+        </div>
       </div>
 
       {isOpen && (
-        <div className="mt-5">
+        <div>
           <div className="mb-1.5 flex justify-between text-xs">
             <span className={soon ? "font-semibold text-blood" : "text-muted-foreground"}>{soon ? "Closing soon" : "Closes automatically in"}</span>
             <Countdown at={r.expiresAt} now={now} className={cn("font-semibold", soon && "text-blood")} />
@@ -283,7 +288,7 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
       {!readOnly && isOpen && supply && <SupplyLine s={supply} />}
 
       {!isOpen && (
-        <div className="mt-4 rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+        <div className="rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
           {status === "fulfilled" ? "Filled" : status === "cancelled" ? "Cancelled" : "Expired"}
           {" "}{posted(now - (status === "expired" ? r.expiresAt : r.closedAt ?? now))}
           {status === "fulfilled" && r.closedAt && <> · took {span(r.closedAt - r.createdAt)}</>}
@@ -292,39 +297,35 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
         </div>
       )}
 
-      {!readOnly && isOpen && r.coming + r.donated + r.unitsReceived > 0 && <div className="mt-4"><Progress req={r} compact /></div>}
+      {!readOnly && isOpen && r.coming + r.donated + r.unitsReceived > 0 && <Progress req={r} compact />}
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
-        <VerifiedTag verified={r.verified} />
-        {!readOnly && isOpen && r.responded > 0 && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">✋ {r.responded} raised {r.responded === 1 ? "a hand" : "hands"}</span>}
-        {readOnly && canGive === false && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Not your blood group</span>}
-      </div>
-
-      {isOpen && readOnly && canGive && (
+      {isOpen && readOnly && (
+        <div className="mt-auto space-y-2">
+      {canGive && (
         response === "coming" || response === "donated" ? (
-          <div className="mt-5 flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-ok">
+          <div className="flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-ok">
             <CheckCircle2 className="h-4 w-4" /> {response === "coming" ? "The coordinator is expecting you" : "Thank you for donating!"}
           </div>
         ) : response === "responded" ? (
-          <div className="mt-5 flex items-center justify-between gap-2 rounded-2xl bg-amber-50 px-4 py-2 text-sm">
+          <div className="flex items-center justify-between gap-2 rounded-2xl bg-amber-50 px-4 py-2 text-sm">
             <span className="font-medium text-amber-900">✋ You raised your hand</span>
             <button disabled={busy} onClick={() => act(api.withdraw, "Withdrawn").then((ok) => ok && onResponse?.(null))} className="text-xs font-semibold text-muted-foreground hover:text-blood hover:underline">Withdraw</button>
           </div>
         ) : (
-          <Btn className="mt-5 w-full" disabled={busy} onClick={() => act(api.respond, "Thanks! The coordinator can see you raised your hand.").then((ok) => ok && onResponse?.("responded"))}>
+          <Btn className="w-full" disabled={busy} onClick={() => act(api.respond, "Thanks! The coordinator can see you raised your hand.").then((ok) => ok && onResponse?.("responded"))}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hand className="h-4 w-4" />} I can come
           </Btn>
         )
       )}
 
-      {isOpen && readOnly && (
-        <Btn variant="soft" className={cn("w-full", canGive ? "mt-2" : "mt-5")} onClick={() => share(r, now)}>
+        <Btn variant="soft" className="w-full" onClick={() => share(r, now)}>
           <Share2 className="h-4 w-4" /> Share with family
         </Btn>
+        </div>
       )}
 
       {isOpen && !readOnly && (
-        <div className="mt-5 flex gap-2 border-t pt-5">
+        <div className="mt-auto flex gap-2 border-t pt-4">
           {r.verified ? (
             <Btn className="group flex-1" onClick={() => onMatch?.(r.id)}>
               Find donors <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />

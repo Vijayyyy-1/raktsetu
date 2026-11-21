@@ -21,5 +21,6 @@ export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: numbe
 
 export const DONATION_WAIT_DAYS = 56;
 export function eligible(lastDonationAt: Date | null, now = new Date()): boolean {
-  return Boolean(lastDonationAt && now.getTime() - lastDonationAt.getTime() >= DONATION_WAIT_DAYS * 86400000);
+  // No recorded donation = first-time donor, who is eligible (subject to the usual medical screening at the camp).
+  return !lastDonationAt || now.getTime() - lastDonationAt.getTime() >= DONATION_WAIT_DAYS * 86400000;
 }

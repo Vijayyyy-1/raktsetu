@@ -86,13 +86,13 @@ export function EstimateNote({ className }: { className?: string }) {
 
 export function SectionHead({ kicker, title, sub, children }: { kicker: string; title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-6">
+    <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-2 text-sm font-semibold text-blood">{kicker}</motion.p>
-        <motion.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.05 }} className="text-5xl font-medium md:text-6xl">
+        <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-1 text-sm font-semibold text-blood">{kicker}</motion.p>
+        <motion.h1 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.05 }} className="text-4xl font-medium md:text-5xl">
           {title}
         </motion.h1>
-        {sub && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="mt-3 max-w-xl text-muted-foreground">{sub}</motion.p>}
+        {sub && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="mt-2 max-w-xl text-muted-foreground">{sub}</motion.p>}
       </div>
       {children}
     </div>
