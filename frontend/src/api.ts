@@ -1,0 +1,110 @@
+// Thin client for the NestJS API. Converts API enums (B_POSITIVE, CRITICAL…) to UI values (B+, critical…) at this boundary only.
+import { GROUPS, type Group, type RequestStatus, type Urgency } from "@/data"
+
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/v1"
+
+// Token lives in memory only (as the API docs recommend); a page refresh signs out.
+let token: string | null = null
+let onUnauthorized = () => {}
+export const setUnauthorizedHandler = (fn: () => void) => (onUnauthorized = fn)
+export const clearToken = () => (token = null)
+
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const data = res.status === 204 ? null : await res.json().catch(() => null)
+  if (res.status === 401 && token) (token = null), onUnauthorized()
+  if (!res.ok) {
+    const msg = data?.message
+    throw new Error(Array.isArray(msg) ? msg.join(", ") : msg || `Request failed (${res.status})`)
+  }
+  return data as T
+}
+
+/* ---------- enum mapping ---------- */
+type ApiGroup = "A_POSITIVE" | "A_NEGATIVE" | "B_POSITIVE" | "B_NEGATIVE" | "AB_POSITIVE" | "AB_NEGATIVE" | "O_POSITIVE" | "O_NEGATIVE"
+export const toGroup = (g: ApiGroup): Group => (g.replace("_POSITIVE", "+").replace("_NEGATIVE", "-") as Group)
+export const fromGroup = (g: Group): ApiGroup => (g.replace("+", "_POSITIVE").replace("-", "_NEGATIVE") as ApiGroup)
+const URG = { ROUTINE: "planned", URGENT: "urgent", CRITICAL: "critical" } as const
+const fromUrgency = (u: Urgency) => (Object.keys(URG) as (keyof typeof URG)[]).find((k) => URG[k] === u)!
+
+/* ---------- types the UI uses ---------- */
+export type Role = "donor" | "coordinator"
+export type LiveRequest = {
+  id: number
+  group: Group
+  units: number
+  hospital: string
+  area: string
+  lat: number
+  lng: number
+  urgency: Urgency
+  verified: boolean
+  expiresAt: number
+  status: RequestStatus
+}
+export type Match = { donorId: number; name: string; group: Group; area: string; km: number; email: string; phone: string; eligibility: string }
+export type DonorProfile = {
+  id: number
+  name: string
+  group: Group
+  area: string
+  lat: number
+  lng: number
+  available: boolean
+  phone: string
+  lastDonationAt: string | null
+}
+export type Eligibility = { eligible: boolean; nextEligibleAt: string | null; reason: string; rule: string }
+
+type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string }
+const toRequest = (r: ApiRequest, status: RequestStatus = "open"): LiveRequest => ({
+  id: r.id, group: toGroup(r.bloodGroup), units: r.units, hospital: r.hospitalName, area: r.area, lat: r.latitude, lng: r.longitude,
+  urgency: URG[r.urgency], verified: r.verified, expiresAt: Date.parse(r.expiresAt), status,
+})
+type ApiDonor = { id: number; displayName: string; bloodGroup: ApiGroup; area: string; latitude: number; longitude: number; available: boolean; phone: string; lastDonationAt: string | null }
+const toDonor = (d: ApiDonor): DonorProfile => ({ id: d.id, name: d.displayName, group: toGroup(d.bloodGroup), area: d.area, lat: d.latitude, lng: d.longitude, available: d.available, phone: d.phone, lastDonationAt: d.lastDonationAt })
+
+/* ---------- endpoints ---------- */
+type TokenResponse = { accessToken: string; user: { id: number; email: string; role: "DONOR" | "COORDINATOR" } }
+const session = (r: TokenResponse) => ((token = r.accessToken), { email: r.user.email, role: r.user.role.toLowerCase() as Role })
+
+export const api = {
+  login: async (email: string, password: string) => session(await call<TokenResponse>("POST", "/auth/login", { email, password })),
+  register: async (d: { email: string; password: string; displayName: string; group: Group; phone: string; area: string; lat: number; lng: number; lastDonationAt?: string }) =>
+    session(await call<TokenResponse>("POST", "/auth/register", {
+      email: d.email, password: d.password, displayName: d.displayName, bloodGroup: fromGroup(d.group), phone: d.phone,
+      area: d.area, latitude: d.lat, longitude: d.lng, ...(d.lastDonationAt ? { lastDonationAt: d.lastDonationAt } : {}),
+    })),
+
+  listRequests: async () => (await call<ApiRequest[]>("GET", "/blood-requests")).map((r) => toRequest(r)),
+  createRequest: async (r: { group: Group; units: number; hospital: string; area: string; lat: number; lng: number; urgency: Urgency; expiresAt: Date }) =>
+    toRequest(await call<ApiRequest>("POST", "/blood-requests", {
+      bloodGroup: fromGroup(r.group), units: r.units, hospitalName: r.hospital, area: r.area, latitude: r.lat, longitude: r.lng,
+      urgency: fromUrgency(r.urgency), expiresAt: r.expiresAt.toISOString(),
+    })),
+  verify: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/verify`)),
+  fulfill: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/fulfill`), "fulfilled"),
+  cancel: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/cancel`), "cancelled"),
+  matches: async (id: number, maxDistanceKm: number) =>
+    (await call<(Omit<Match, "name" | "group" | "km"> & { displayName: string; bloodGroup: ApiGroup; distanceKm: number })[]>("POST", `/blood-requests/${id}/matches?maxDistanceKm=${maxDistanceKm}`))
+      .map((m) => ({ donorId: m.donorId, name: m.displayName, group: toGroup(m.bloodGroup), area: m.area, km: m.distanceKm, email: m.email, phone: m.phone, eligibility: m.eligibility })),
+
+  me: async () => toDonor(await call<ApiDonor>("GET", "/donors/me")),
+  updateMe: async (patch: Partial<{ available: boolean; lastDonationAt: string | null; area: string; latitude: number; longitude: number }>) => toDonor(await call<ApiDonor>("PATCH", "/donors/me", patch)),
+  eligibility: () => call<Eligibility>("GET", "/donors/me/eligibility"),
+}
+
+export const requestLabel = (id: number) => `RQ-${String(id).padStart(4, "0")}`
+
+export function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const r = (d: number) => (d * Math.PI) / 180
+  const h = Math.sin(r(bLat - aLat) / 2) ** 2 + Math.cos(r(aLat)) * Math.cos(r(bLat)) * Math.sin(r(bLng - aLng) / 2) ** 2
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+// Self-check: enum mapping must round-trip for every group.
+if (import.meta.env.DEV) for (const g of GROUPS) console.assert(toGroup(fromGroup(g)) === g, `group mapping broken for ${g}`)
