@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { AlertTriangle, ArrowRight, Building2, CheckCircle2, Hand, Loader2, Users, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
+import { AlertTriangle, ArrowRight, LayoutGrid, Map as MapIcon, Building2, CheckCircle2, Hand, Loader2, Users, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BloodChip, Btn, SPRING, SectionHead, StatusTag, UrgencyTag, VerifiedTag, fadeUp, popIn } from "@/components/bits"
 import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest, type OutreachStatus, type Supply } from "@/api"
 import { CAN_RECEIVE, GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
+import { RequestsMap } from "@/components/RequestsMap"
 import { cn } from "@/lib/utils"
 
 // Expiry is computed on read, same rule as the API.
@@ -51,6 +52,7 @@ type Props = {
 export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly }: Props) {
   const [tab, setTab] = useState<Tab>(readOnly ? "mine" : "active")
   const [open, setOpen] = useState(false)
+  const [view, setView] = useState<"cards" | "map">("cards")
   const [me, setMe] = useState<DonorProfile | null>(null)
   const [responses, setResponses] = useState<Record<number, OutreachStatus>>({})
   useEffect(() => {
@@ -131,9 +133,20 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
             Showing: {FILTER_LABEL[filter]} <X className="h-3.5 w-3.5" aria-label="Clear filter" />
           </button>
         )}
+        {!readOnly && tab === "active" && (
+          <div className="ml-auto flex rounded-full bg-white/70 p-1 shadow-sm">
+            {([["cards", LayoutGrid, "Cards"], ["map", MapIcon, "Map"]] as const).map(([v, Icon, label]) => (
+              <button key={v} onClick={() => setView(v)} aria-pressed={view === v} className={cn("flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold", view === v ? "bg-foreground text-white" : "text-muted-foreground")}>
+                <Icon className="h-4 w-4" />{label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {requests === null ? (
+      {!readOnly && tab === "active" && view === "map" && requests !== null ? (
+        <RequestsMap requests={triage} supply={supply} onMatch={onMatch} />
+      ) : requests === null ? (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((i) => <div key={i} className="h-72 animate-pulse rounded-[28px] bg-white/60" />)}
         </div>
