@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { BellRing, Check, CheckCircle2, Clock3, Pause, Play, Radar, ShieldCheck } from "lucide-react"
-import { BLUSH_STYLE, loadGoogleMaps } from "@/maps"
+import { BLUSH_STYLE, loadGoogleMaps, onMapsAuthFailure } from "@/maps"
 import { SPRING } from "@/components/bits"
 import { BEATS, CENTER, LOOP_MS, RADIUS_KM, SIM_DONORS, fmtClock, frameAt, plan, type DotState, type Frame, type LatLng, type MapRequest } from "@/story"
 import { cn } from "@/lib/utils"
@@ -275,7 +275,8 @@ function MapLayer({ req, f }: { req: MapRequest; f: Frame }) {
         setStatus("ok")
       })
       .catch(() => live && setStatus("failed"))
-    return () => void (live = false)
+    const unsubscribe = onMapsAuthFailure(() => live && setStatus("failed")) // key refused after load → use the SVG map
+    return () => ((live = false), unsubscribe())
   }, [])
 
   // New request: fly to the hospital.
@@ -319,7 +320,7 @@ function MapLayer({ req, f }: { req: MapRequest; f: Frame }) {
 
   return (
     <>
-      <div ref={el} className={cn("absolute inset-0 transition-opacity duration-700", status === "ok" ? "opacity-100" : "opacity-0")} aria-hidden />
+      <div ref={el} className={cn("absolute inset-0 transition-opacity duration-700", status === "ok" ? "opacity-100" : "pointer-events-none invisible opacity-0")} aria-hidden />
       {status === "failed" && <SvgMap req={req} f={f} />}
       {status === "loading" && <div className="absolute inset-0 animate-pulse bg-[#f8e9e5]" />}
     </>

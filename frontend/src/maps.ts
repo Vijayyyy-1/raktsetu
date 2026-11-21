@@ -2,13 +2,26 @@
 // Loads the Google Maps JavaScript API once. Rejects if there's no key, the script fails, or the key is refused.
 const KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
 let loading: Promise<typeof google.maps> | null = null
+// Google can reject the key *after* the script loads (it then paints its own error box over the map),
+// so callers subscribe to hear about it at any time, not just while loading.
+let authFailed = false
+const authListeners = new Set<() => void>()
+export function onMapsAuthFailure(cb: () => void) {
+  if (authFailed) cb()
+  authListeners.add(cb)
+  return () => void authListeners.delete(cb)
+}
 
 export function loadGoogleMaps(): Promise<typeof google.maps> {
   if (loading) return loading
   loading = new Promise((resolve, reject) => {
     if (!KEY) return reject(new Error("No Google Maps key"))
     const w = window as unknown as Record<string, unknown>
-    w.gm_authFailure = () => reject(new Error("Google Maps key was refused"))
+    w.gm_authFailure = () => {
+      authFailed = true
+      authListeners.forEach((cb) => cb())
+      reject(new Error("Google Maps key was refused"))
+    }
     w.__rsMapsReady = () => resolve(google.maps)
     const s = document.createElement("script")
     s.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&v=weekly&callback=__rsMapsReady`
