@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { tidyCommunity } from '../auth/auth.service';
 import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
 import { decrypt, encrypt } from '../common/crypto';
@@ -19,10 +20,10 @@ export class DonorsService {
   async update(user: AuthUser, dto: UpdateDonorDto) {
     const existing = await this.prisma.donor.findUnique({ where: { accountId: Number(user.sub) } });
     if (!existing) throw new NotFoundException('Donor profile not found');
-    const { phone, lastDonationAt, ...fields } = dto;
+    const { phone, community, ...fields } = dto;
     const donor = await this.prisma.donor.update({ where: { accountId: Number(user.sub) }, data: {
       ...fields, ...(phone ? { phoneEncrypted: encrypt(phone) } : {}),
-      ...(lastDonationAt !== undefined ? { lastDonationAt: lastDonationAt ? new Date(lastDonationAt) : null } : {}),
+      ...(community !== undefined ? { community: tidyCommunity(community) } : {}),
     } });
     return { ...donor, phone: decrypt(donor.phoneEncrypted), phoneEncrypted: undefined };
   }
@@ -40,8 +41,11 @@ export class DonorsService {
   }
   async removeDonation(user: AuthUser, id: number) {
     const donor = await this.mine(user);
-    const { count } = await this.prisma.donation.deleteMany({ where: { id, donorId: donor.id } });
-    if (!count) throw new NotFoundException('Donation not found');
+    const donation = await this.prisma.donation.findFirst({ where: { id, donorId: donor.id }, select: { requestId: true } });
+    if (!donation) throw new NotFoundException('Donation not found');
+    // A coordinator recorded this one against a request; removing it would also falsify that request's outcome.
+    if (donation.requestId) throw new ConflictException('This donation was recorded by a coordinator for a request — ask them to correct it');
+    await this.prisma.donation.delete({ where: { id } });
     return this.syncLastDonation(donor.id);
   }
   private async mine(user: AuthUser) {

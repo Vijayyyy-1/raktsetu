@@ -19,7 +19,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   if (res.status === 401 && token) (token = null), onUnauthorized()
   if (!res.ok) {
     const msg = data?.message
-    throw new Error(Array.isArray(msg) ? msg.join(", ") : msg || `Request failed (${res.status})`)
+    throw Object.assign(new Error(Array.isArray(msg) ? msg.join(", ") : msg || `Request failed (${res.status})`), { status: res.status })
   }
   return data as T
 }
@@ -140,7 +140,7 @@ export const api = {
   donations: () => call<Donation[]>("GET", "/donors/me/donations"),
   addDonation: async (at: Date) => toDonor(await call<ApiDonor>("POST", "/donors/me/donations", { donatedAt: at.toISOString() })),
   removeDonation: async (id: number) => toDonor(await call<ApiDonor>("DELETE", `/donors/me/donations/${id}`)),
-  updateMe: async (patch: Partial<{ available: boolean; lastDonationAt: string | null; area: string; latitude: number; longitude: number }>) => toDonor(await call<ApiDonor>("PATCH", "/donors/me", patch)),
+  updateMe: async (patch: Partial<{ available: boolean; area: string; latitude: number; longitude: number; community: string }>) => toDonor(await call<ApiDonor>("PATCH", "/donors/me", patch)),
   alerts: async () => {
     const r = await call<{ unread: number; alerts: { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; urgency: keyof typeof URG; distanceKm: number; unread: boolean }[] }>("GET", "/donors/me/alerts")
     return { unread: r.unread, alerts: r.alerts.map((a): DonorAlert => ({ id: a.id, group: toGroup(a.bloodGroup), units: a.units, hospital: a.hospitalName, area: a.area, urgency: URG[a.urgency], km: a.distanceKm, unread: a.unread })) }

@@ -30,9 +30,17 @@ export function RequestsMap({ requests, supply, onMatch }: { requests: LiveReque
     return () => void (live = false)
   }, [])
 
+  // The parent re-renders every second (countdowns) with a fresh array, so redraw only when what's drawn actually changes,
+  // and re-fit the view only when the set of requests changes — otherwise the coordinator's pan/zoom snaps back.
+  const latest = useRef({ requests, supply })
+  latest.current = { requests, supply }
+  const drawKey = requests.map((r) => `${r.id}:${r.lat},${r.lng}:${r.group}:${r.urgency}:${ring(supply[r.id])}`).join("|")
+  const idsKey = requests.map((r) => r.id).sort((a, b) => a - b).join()
+
   useEffect(() => {
     const m = map.current
     if (status !== "ok" || !m) return
+    const { requests, supply } = latest.current
     drawn.current.forEach((o) => o.setMap(null))
     drawn.current = requests.flatMap((r) => {
       const at = { lat: r.lat, lng: r.lng }
@@ -45,12 +53,16 @@ export function RequestsMap({ requests, supply, onMatch }: { requests: LiveReque
       const coverage = new google.maps.Circle({ map: m, center: at, radius: 10_000, clickable: false, fillColor: ring(supply[r.id]), fillOpacity: 0.08, strokeColor: ring(supply[r.id]), strokeOpacity: 0.5, strokeWeight: 1.5 })
       return [marker, coverage]
     })
-    if (requests.length) {
-      const b = new google.maps.LatLngBounds()
-      requests.forEach((r) => b.extend({ lat: r.lat, lng: r.lng }))
-      requests.length === 1 ? (m.setCenter(b.getCenter()), m.setZoom(12)) : m.fitBounds(b, 80)
-    }
-  }, [status, requests, supply])
+  }, [status, drawKey])
+
+  useEffect(() => {
+    const m = map.current
+    const { requests } = latest.current
+    if (status !== "ok" || !m || !requests.length) return
+    const b = new google.maps.LatLngBounds()
+    requests.forEach((r) => b.extend({ lat: r.lat, lng: r.lng }))
+    requests.length === 1 ? (m.setCenter(b.getCenter()), m.setZoom(12)) : m.fitBounds(b, 80)
+  }, [status, idsKey])
 
   const sel = requests.find((r) => r.id === picked)
   const s = sel && supply[sel.id]

@@ -168,7 +168,7 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
               <h2 className="text-2xl font-medium">{matches === null ? "Looking…" : `${matches.length} ${matches.length === 1 ? "donor" : "donors"} can help`}</h2>
               <p className="text-sm text-muted-foreground">Nearest first · contact details hidden until you need them</p>
             </div>
-            {!done && matches && matches.length > 0 && (
+            {!done && req.status === "open" && matches !== null && ( // shown even with 0 matches (donors who gave stop matching); hidden once it auto-closes
               <Btn size="lg" variant="ok" onClick={fulfil} disabled={closing}>
                 {closing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Need met — close it
               </Btn>

@@ -1,13 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { BloodGroup, OutreachStatus, RequestUrgency } from '@prisma/client';
-import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Trim } from '../common/validation';
 
 export class CreateRequestDto {
   @ApiProperty({ enum: BloodGroup }) @IsEnum(BloodGroup) bloodGroup: BloodGroup;
   @ApiProperty({ minimum: 1, maximum: 10 }) @IsInt() @Min(1) @Max(10) units: number;
-  @ApiProperty() @IsString() @MinLength(2) hospitalName: string;
-  @ApiProperty() @IsString() area: string;
+  @ApiProperty() @Trim() @IsString() @MinLength(2) @MaxLength(100) hospitalName: string;
+  @ApiProperty() @Trim() @IsString() @MinLength(2) @MaxLength(80) area: string;
   @ApiProperty() @IsNumber() @Min(-90) @Max(90) latitude: number;
   @ApiProperty() @IsNumber() @Min(-180) @Max(180) longitude: number;
   @ApiProperty({ enum: RequestUrgency }) @IsEnum(RequestUrgency) urgency: RequestUrgency;

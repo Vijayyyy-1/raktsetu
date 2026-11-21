@@ -35,7 +35,7 @@ export class RequestsController {
   @Delete(':id/respond') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)
   withdraw(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.withdraw(id, user); }
   @Get(':id/outreach') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
-  outreach(@Param('id', ParseIntPipe) id: number) { return this.service.outreach(id); }
+  outreach(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.outreach(id, user); }
   @Put(':id/outreach/:donorId') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   setOutreach(@Param('id', ParseIntPipe) id: number, @Param('donorId', ParseIntPipe) donorId: number, @Body() dto: OutreachDto) { return this.service.setOutreach(id, donorId, dto); }
   @Post(':id/fulfill') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)

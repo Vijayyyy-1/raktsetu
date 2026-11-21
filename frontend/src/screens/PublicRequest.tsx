@@ -13,7 +13,8 @@ export function PublicRequest({ id }: { id: number }) {
   const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
-    const load = () => api.requestStatus(id).then(setR).catch(() => setR("missing"))
+    // Only a real 404 means "gone"; a network blip or server hiccup keeps the last known state (don't tell people to stop forwarding a live request).
+    const load = () => api.requestStatus(id).then(setR).catch((e: { status?: number }) => e.status === 404 && setR("missing"))
     load()
     const poll = setInterval(load, 30_000) // a closed request should flip while the page is open
     const tick = setInterval(() => setNow(Date.now()), 1000)

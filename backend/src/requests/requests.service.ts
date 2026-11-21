@@ -68,6 +68,7 @@ export class RequestsService {
   async create(user: AuthUser, dto: CreateRequestDto) {
     const expiresAt = new Date(dto.expiresAt);
     if (expiresAt <= new Date()) throw new BadRequestException('expiresAt must be in the future');
+    if (expiresAt.getTime() > Date.now() + 7 * 86400000) throw new BadRequestException('expiresAt can be at most 7 days ahead');
     return this.one(await this.prisma.bloodRequest.create({ data: { ...dto, expiresAt, createdById: Number(user.sub) }, select: publicFields }));
   }
   private async requestOrFail(id: number): Promise<BloodRequest> {
@@ -86,6 +87,7 @@ export class RequestsService {
   }
   // Aggregate outcomes for the last 30 days. Counts only, so it is safe to show publicly.
   async impact() {
+    await this.prisma.bloodRequest.updateMany({ where: { status: RequestStatus.OPEN, expiresAt: { lte: new Date() } }, data: { status: RequestStatus.EXPIRED } });
     const since = new Date(Date.now() - 30 * 86400000);
     const closed = await this.prisma.bloodRequest.findMany({
       where: { verified: true, createdAt: { gte: since }, status: { in: [RequestStatus.FULFILLED, RequestStatus.EXPIRED] } },
@@ -125,13 +127,16 @@ export class RequestsService {
       .map(({ donor, distance }) => ({ donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, community: donor.community, latitude: approx(donor.latitude), longitude: approx(donor.longitude), distanceKm: Math.round(distance * 10) / 10, eligibility: 'Estimated eligible; must be confirmed with the donor and medical staff.' }));
   }
   // Contact details are released one donor at a time, on purpose, and logged — never in bulk with match results.
+  // The same rule matching uses: active, available, compatible group, estimated eligible.
+  private isMatch(request: BloodRequest, donor: { available: boolean; bloodGroup: BloodRequest['bloodGroup']; lastDonationAt: Date | null; account: { isActive: boolean } }) {
+    return donor.account.isActive && donor.available && compatibleDonorGroups(request.bloodGroup).includes(donor.bloodGroup) && eligible(donor.lastDonationAt);
+  }
   async contact(id: number, donorId: number, user: AuthUser) {
     const request = await this.requestOrFail(id);
     if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified');
     const donor = await this.prisma.donor.findUnique({ where: { id: donorId }, include: { account: { select: { email: true, isActive: true } } } });
     const existing = await this.prisma.outreach.findUnique({ where: { requestId_donorId: { requestId: id, donorId } } });
-    const isMatch = donor && donor.account.isActive && donor.available && compatibleDonorGroups(request.bloodGroup).includes(donor.bloodGroup) && eligible(donor.lastDonationAt);
-    if (!donor || (!isMatch && !existing)) throw new NotFoundException('This donor is not a match for this request');
+    if (!donor || (!this.isMatch(request, donor) && !existing)) throw new NotFoundException('This donor is not a match for this request');
     this.audit.log(`contact revealed: coordinator=${user.sub} donor=${donorId} request=${id}`);
     const consented = existing?.status === OutreachStatus.RESPONDED || existing?.status === OutreachStatus.COMING;
     return { donorId, email: donor.account.email, phone: decrypt(donor.phoneEncrypted), raisedHand: consented };
@@ -155,8 +160,9 @@ export class RequestsService {
     const status = donated + unitsReceived >= units ? RequestStatus.FULFILLED : RequestStatus.OPEN;
     return this.one(await this.prisma.bloodRequest.update({ where: { id }, data: { units, unitsReceived, urgency: dto.urgency, expiresAt, status }, select: { ...publicFields, status: true } }));
   }
-  async outreach(id: number) {
+  async outreach(id: number, user: AuthUser) {
     const request = await this.requestOrFail(id);
+    this.audit.log(`outreach list viewed (includes contacts): coordinator=${user.sub} request=${id}`);
     const rows = await this.prisma.outreach.findMany({ where: { requestId: id }, include: { donor: { include: { account: { select: { email: true } } } } }, orderBy: { updatedAt: 'desc' } });
     return rows.map(({ donor, status, updatedAt }) => ({
       donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, latitude: approx(donor.latitude), longitude: approx(donor.longitude), status, updatedAt,
@@ -194,10 +200,16 @@ export class RequestsService {
   }
   async setOutreach(id: number, donorId: number, dto: OutreachDto) {
     const request = await this.requestOrFail(id);
-    if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified');
-    if (!(await this.prisma.donor.findUnique({ where: { id: donorId }, select: { id: true } }))) throw new NotFoundException('Donor not found');
+    // Fulfilled requests stay editable so a mis-clicked "donated" can be undone (which may reopen the request).
+    const editable = request.status === RequestStatus.OPEN || request.status === RequestStatus.FULFILLED;
+    if (!editable || !request.verified) throw new BadRequestException('Request must be open and verified');
+    const donor = await this.prisma.donor.findUnique({ where: { id: donorId }, select: { available: true, bloodGroup: true, lastDonationAt: true, account: { select: { isActive: true } } } });
+    if (!donor) throw new NotFoundException('Donor not found');
     const key = { requestId_donorId: { requestId: id, donorId } };
     const before = await this.prisma.outreach.findUnique({ where: key, select: { status: true } });
+    // Adding someone to outreach exposes their contact in the outreach list, so new entries must be real matches.
+    if (!before && !this.isMatch(request, donor)) throw new NotFoundException('This donor is not a match for this request');
+    if (!before && request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is closed');
     await this.prisma.$transaction(async (tx) => {
       await tx.outreach.upsert({ where: key, update: { status: dto.status }, create: { requestId: id, donorId, status: dto.status } });
       // "Donated" is a real donation: it goes into the donor's history and restarts their eligibility clock.
@@ -209,7 +221,11 @@ export class RequestsService {
         const latest = await tx.donation.findFirst({ where: { donorId }, orderBy: { donatedAt: 'desc' } });
         await tx.donor.update({ where: { id: donorId }, data: { lastDonationAt: latest?.donatedAt ?? null } });
       }
+      // Close the request the moment donations plus units from elsewhere cover it; reopen if an undo drops it below.
+      const donated = await tx.outreach.count({ where: { requestId: id, status: OutreachStatus.DONATED } });
+      const status = donated + request.unitsReceived >= request.units ? RequestStatus.FULFILLED : request.expiresAt <= new Date() ? RequestStatus.EXPIRED : RequestStatus.OPEN;
+      if (status !== request.status) await tx.bloodRequest.update({ where: { id }, data: { status } });
     });
-    return this.one(await this.prisma.bloodRequest.findUniqueOrThrow({ where: { id }, select: publicFields }));
+    return this.one(await this.prisma.bloodRequest.findUniqueOrThrow({ where: { id }, select: { ...publicFields, status: true } }));
   }
 }

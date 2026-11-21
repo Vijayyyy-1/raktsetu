@@ -35,10 +35,16 @@ export class DrivesService {
   }
   async rsvp(user: AuthUser, driveId: number) {
     const donorId = await this.donorId(user);
-    const drive = await this.prisma.drive.findUnique({ where: { id: driveId }, select: { ...publicFields } });
-    if (!drive || drive.endsAt <= new Date()) throw new NotFoundException('Upcoming drive not found');
-    if (drive.capacity !== null && drive._count.rsvps >= drive.capacity) throw new ConflictException('This drive is full');
-    await this.prisma.driveRsvp.upsert({ where: { driveId_donorId: { driveId, donorId } }, update: {}, create: { driveId, donorId } });
+    await this.prisma.$transaction(async (tx) => {
+      // Lock the drive row so simultaneous RSVPs queue up here; otherwise each sees a free spot and the drive overbooks.
+      const [drive] = await tx.$queryRaw<{ capacity: number | null; endsAt: Date }[]>`SELECT "capacity", "endsAt" FROM "Drive" WHERE "id" = ${driveId} FOR UPDATE`;
+      if (!drive || drive.endsAt <= new Date()) throw new NotFoundException('Upcoming drive not found');
+      // Someone already going is never "full" — a repeat RSVP is just confirmed again.
+      const going = await tx.driveRsvp.findUnique({ where: { driveId_donorId: { driveId, donorId } } });
+      if (going) return;
+      if (drive.capacity !== null && (await tx.driveRsvp.count({ where: { driveId } })) >= drive.capacity) throw new ConflictException('This drive is full');
+      await tx.driveRsvp.create({ data: { driveId, donorId } });
+    });
     return toPublic(await this.prisma.drive.findUniqueOrThrow({ where: { id: driveId }, select: publicFields }));
   }
   async cancelRsvp(user: AuthUser, driveId: number) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useQueryClient } from "@tanstack/react-query"
 import { LogOut } from "lucide-react"
@@ -47,9 +47,14 @@ export default function App() {
   }, [signOut])
 
   // The API lists only open requests; keep ones closed during this session so the "Closed" tab has something to show.
+  // A poll that started before the user's last change would overwrite it with stale data (e.g. a just-fulfilled
+  // request reappearing as open), so such results are dropped; the next poll catches up.
+  const lastChange = useRef(0)
   const load = useCallback(async () => {
+    const started = Date.now()
     try {
       const open = await api.listRequests()
+      if (started < lastChange.current) return
       setRequests((prev) => [...open, ...(prev ?? []).filter((r) => r.status !== "open" && !open.some((o) => o.id === r.id))])
     } catch (e) {
       toast.error((e as Error).message === "Failed to fetch" ? "Can't reach the API — is it running?" : (e as Error).message)
@@ -68,9 +73,9 @@ export default function App() {
     load()
     const t = setInterval(load, 30_000)
     return () => clearInterval(t)
-  }, [session, load])
+  }, [session?.email, load]) // not `session`: /auth/me enriching it must not trigger a second load
 
-  const upsert = (r: LiveRequest) => setRequests((rs) => [r, ...(rs ?? []).filter((x) => x.id !== r.id)])
+  const upsert = (r: LiveRequest) => ((lastChange.current = Date.now()), setRequests((rs) => [r, ...(rs ?? []).filter((x) => x.id !== r.id)]))
   const enter = (role: Role, email: string) => (setSession({ role, email }), setAuthView("landing"), setPage(NAV[role][0].id), setMatchId(null))
   const demo = async (role: Role) => {
     const acct = DEMO_ACCOUNTS[role]

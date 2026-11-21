@@ -1,18 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsDateString, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { BloodGroup } from '@prisma/client';
+import { Trim } from '../common/validation';
 
 export class RegisterDto {
   @ApiProperty() @IsEmail() email: string;
   @ApiProperty({ minLength: 10 }) @IsString() @MinLength(10) password: string;
-  @ApiProperty() @IsString() @MinLength(2) displayName: string;
+  @ApiProperty() @Trim() @IsString() @MinLength(2) @MaxLength(60) displayName: string;
   @ApiProperty({ enum: BloodGroup }) @IsEnum(BloodGroup) bloodGroup: BloodGroup;
   @ApiProperty() @IsString() @Matches(/^\+?[0-9 ()-]{7,20}$/) phone: string;
-  @ApiProperty() @IsString() area: string;
+  @ApiProperty() @Trim() @IsString() @MinLength(2) @MaxLength(80) area: string;
   @ApiProperty() @IsNumber() @Min(-90) @Max(90) latitude: number;
   @ApiProperty() @IsNumber() @Min(-180) @Max(180) longitude: number;
   @ApiProperty({ required: false }) @IsOptional() @IsDateString() lastDonationAt?: string;
-  @ApiProperty({ required: false, description: 'College, workplace or housing society' }) @IsOptional() @IsString() @MaxLength(60) community?: string;
+  @ApiProperty({ required: false, description: 'College, workplace or housing society' }) @IsOptional() @Trim() @IsString() @MaxLength(60) community?: string;
 }
 
 export class LoginDto {

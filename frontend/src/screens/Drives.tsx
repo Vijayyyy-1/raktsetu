@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Btn, SPRING, SectionHead, fadeUp, popIn } from "@/components/bits"
 import { BloodBanksNear, ERAKTKOSH, ExtLink } from "@/components/BloodBanks"
 import { api, type Drive, type Eligibility, type Role } from "@/api"
-import { placeLocation, searchPlaces, type Suggestion } from "@/places"
+import { placeLocation, placesEnabled, searchPlaces, type Suggestion } from "@/places"
 import { cn } from "@/lib/utils"
 
 const PUNE = { lat: 18.5204, lng: 73.8567 }
@@ -161,23 +161,27 @@ function NewDriveDialog({ open, onOpenChange, onCreated }: { open: boolean; onOp
   const [results, setResults] = useState<Suggestion[]>([])
   const [place, setPlace] = useState<{ venue: string; area: string; lat: number; lng: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [searchFailed, setSearchFailed] = useState(false)
 
   useEffect(() => {
     if (place || q.trim().length < 3) return setResults([])
-    const t = setTimeout(() => searchPlaces(q).then(setResults).catch(() => setResults([])), 300)
+    const t = setTimeout(() => searchPlaces(q).then((r) => (setResults(r), setSearchFailed(false))).catch(() => (setResults([]), setSearchFailed(true))), 300)
     return () => clearTimeout(t)
   }, [q, place])
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!place) return toast.error("Pick the venue from the search results")
+    // Without a search result (no Places key, quota used up, or an unlisted hall) the typed name is used and the
+    // drive is pinned to the city centre, so posting a drive never depends on Google.
+    const venue = place ?? (q.trim().length >= 2 ? { venue: q.trim(), area: q.trim(), ...PUNE } : null)
+    if (!venue) return toast.error("Enter the venue")
     const f = new FormData(e.currentTarget)
     const date = String(f.get("date"))
     const cap = Number(f.get("capacity"))
     setBusy(true)
     try {
       const d = await api.createDrive({
-        title: String(f.get("title")), organizer: String(f.get("organizer")), venue: place.venue, area: place.area, latitude: place.lat, longitude: place.lng,
+        title: String(f.get("title")), organizer: String(f.get("organizer")), venue: venue.venue, area: venue.area, latitude: venue.lat, longitude: venue.lng,
         startsAt: new Date(`${date}T${f.get("from")}`).toISOString(), endsAt: new Date(`${date}T${f.get("to")}`).toISOString(), capacity: cap > 0 ? cap : null,
       })
       onCreated(d)
@@ -211,6 +215,11 @@ function NewDriveDialog({ open, onOpenChange, onCreated }: { open: boolean; onOp
             ) : (
               <>
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a college, hall or hospital" className="mt-1 h-12 w-full rounded-full border border-input bg-white px-5 text-sm outline-none focus:border-blood/50 focus:ring-4 focus:ring-blood/10" />
+                {(!placesEnabled || searchFailed || (q.trim().length >= 3 && results.length === 0)) && (
+                  <span className="ml-4 mt-1 block text-[11px] text-muted-foreground">
+                    {searchFailed ? "Venue search is unavailable right now. " : !placesEnabled ? "" : "No matches. "}Type the venue name and post — it will be pinned to the city centre.
+                  </span>
+                )}
                 {results.length > 0 && (
                   <ul className="absolute inset-x-0 top-[4.5rem] z-10 rounded-2xl bg-white p-1.5 shadow-xl">
                     {results.map((s) => (

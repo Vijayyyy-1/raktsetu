@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Account, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -17,6 +17,7 @@ export class AuthService {
   }
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
+    if (dto.lastDonationAt && new Date(dto.lastDonationAt).getTime() > Date.now()) throw new BadRequestException('Last donation date cannot be in the future');
     if (await this.prisma.account.findUnique({ where: { email } })) throw new ConflictException('Email is already registered');
     const account = await this.prisma.account.create({
       data: {
