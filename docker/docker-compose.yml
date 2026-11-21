@@ -1,0 +1,58 @@
+# Paths are relative to this file. Name pinned so moving the file keeps the existing containers and DB volume.
+name: blood-api
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: blood_donation
+      POSTGRES_USER: blood
+      POSTGRES_PASSWORD: blood
+    ports:
+      - "5433:5432"
+    volumes:
+      - blood-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blood -d blood_donation"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run prisma:generate && npm run docker:start"
+    env_file:
+      - path: ../backend/.env
+        required: false
+      - path: ../backend/.env.local
+        required: false
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../backend:/app
+      - blood-node-modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    # npm (not pnpm) so the stock image works without extra tooling; node_modules lives in a volume so host binaries never clash.
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      # Overrides frontend/.env (Vite gives real env vars priority over .env files).
+      VITE_API_BASE_URL: http://localhost:3000/v1
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend:/app
+      - blood-frontend-node-modules:/app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  blood-postgres:
+  blood-node-modules:
+  blood-frontend-node-modules:
