@@ -4,6 +4,7 @@ import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, Loader2, Lock, 
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { BloodChip, Btn, Drop, EstimateNote, SPRING, UrgencyTag, VerifiedTag, fadeUp } from "@/components/bits"
 import { api, requestLabel, type Contact, type LiveRequest, type Match, type Outreach, type OutreachStatus } from "@/api"
@@ -18,6 +19,9 @@ const MAX_KM = 50
 export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now: number; onBack: () => void; onChange: (r: LiveRequest) => void }) {
   const [radius, setRadius] = useState(10)
   const [query, setQuery] = useState(10) // radius actually sent to the API (on slider release)
+  const [community, setCommunity] = useState("") // "" = everyone
+  const [communities, setCommunities] = useState<{ name: string; donors: number }[]>([])
+  useEffect(() => void api.communities().then(setCommunities).catch(() => {}), [])
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [reveal, setReveal] = useState<Match | null>(null)
   const [revealed, setRevealed] = useState<Record<number, Contact>>({})
@@ -56,9 +60,9 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
   useEffect(() => {
     let live = true
     setMatches(null)
-    api.matches(req.id, query).then((m) => live && setMatches(m)).catch((e) => live && (toast.error(e.message), setMatches([])))
+    api.matches(req.id, query, community || undefined).then((m) => live && setMatches(m)).catch((e) => live && (toast.error(e.message), setMatches([])))
     return () => void (live = false)
-  }, [req.id, query])
+  }, [req.id, query, community])
 
   const fulfil = async () => {
     setClosing(true)
@@ -142,6 +146,18 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
           <div className="mt-4 rounded-2xl bg-muted p-4">
             <div className="mb-3 flex justify-between text-sm"><span className="font-medium">Search radius</span><span className="font-display font-semibold">{radius} km</span></div>
             <Slider min={1} max={MAX_KM} step={1} value={[radius]} onValueChange={([v]) => setRadius(v)} onValueCommit={([v]) => setQuery(v)} />
+            {communities.length > 0 && (
+              <div className="mt-4 flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium">Community</span>
+                <Select value={community || "all"} onValueChange={(v) => setCommunity(v === "all" ? "" : v)}>
+                  <SelectTrigger className="h-9 w-[210px] rounded-full border-0 bg-white px-4 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="rounded-2xl">
+                    <SelectItem value="all" className="rounded-xl">Everyone nearby</SelectItem>
+                    {communities.map((c) => <SelectItem key={c.name} value={c.name} className="rounded-xl">{c.name} · {c.donors}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <EstimateNote className="mt-4 px-1" />
         </div>
@@ -184,7 +200,7 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
                   <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white font-display text-sm font-semibold text-blood shadow-sm">{initials(d.name)}</div>
                   <div className="min-w-[9rem] flex-1">
                     <div className="truncate font-semibold">{d.name} <span className="ml-1 text-xs font-medium text-blood">{d.group}</span></div>
-                    <div className="truncate text-xs text-muted-foreground">{d.area} · {d.km} km away</div>
+                    <div className="truncate text-xs text-muted-foreground">{d.area} · {d.km} km away{d.community && <> · <span className="font-medium text-foreground/70">{d.community}</span></>}</div>
                   </div>
                   <StatusPicker value={status[d.donorId]} onPick={(s) => track(d, s)} />
                   {revealed[d.donorId] ? (

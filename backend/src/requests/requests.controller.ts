@@ -11,6 +11,8 @@ export class RequestsController {
   @Get() list() { return this.service.listActive(); }
   @Get('closed') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   closed() { return this.service.listClosed(); }
+  @Get('communities') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  communities() { return this.service.communities(); }
   @Get('supply') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   supply() { return this.service.supply(); }
   @Get('responses/me') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)
@@ -24,7 +26,7 @@ export class RequestsController {
   @Post(':id/verify') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   verify(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.verify(id, user); }
   @Post(':id/matches') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
-  match(@Param('id', ParseIntPipe) id: number, @Query() query: MatchQueryDto) { return this.service.match(id, query.maxDistanceKm); }
+  match(@Param('id', ParseIntPipe) id: number, @Query() query: MatchQueryDto) { return this.service.match(id, query.maxDistanceKm, query.community); }
   @Post(':id/matches/:donorId/contact') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   contact(@Param('id', ParseIntPipe) id: number, @Param('donorId', ParseIntPipe) donorId: number, @CurrentUser() user: AuthUser) { return this.service.contact(id, donorId, user); }
   @Post(':id/respond') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)

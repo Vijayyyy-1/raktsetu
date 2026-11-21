@@ -56,7 +56,7 @@ export type LiveRequest = {
 export type Supply = { id: number; within10: number; within25: number }
 export type OutreachStatus = "responded" | "called" | "no_answer" | "coming" | "declined" | "donated"
 export type Outreach = { donorId: number; name: string; group: Group; area: string; lat: number; lng: number; km: number; email: string; phone: string; status: OutreachStatus; updatedAt: number }
-export type Match = { donorId: number; name: string; group: Group; area: string; lat: number; lng: number; km: number; eligibility: string }
+export type Match = { donorId: number; name: string; group: Group; area: string; community?: string | null; lat: number; lng: number; km: number; eligibility: string }
 export type Contact = { donorId: number; email: string; phone: string; raisedHand: boolean }
 export type DonorProfile = {
   id: number
@@ -88,10 +88,10 @@ const session = (r: TokenResponse) => ((token = r.accessToken), { email: r.user.
 
 export const api = {
   login: async (email: string, password: string) => session(await call<TokenResponse>("POST", "/auth/login", { email, password })),
-  register: async (d: { email: string; password: string; displayName: string; group: Group; phone: string; area: string; lat: number; lng: number; lastDonationAt?: string }) =>
+  register: async (d: { email: string; password: string; displayName: string; group: Group; phone: string; area: string; lat: number; lng: number; lastDonationAt?: string; community?: string }) =>
     session(await call<TokenResponse>("POST", "/auth/register", {
       email: d.email, password: d.password, displayName: d.displayName, bloodGroup: fromGroup(d.group), phone: d.phone,
-      area: d.area, latitude: d.lat, longitude: d.lng, ...(d.lastDonationAt ? { lastDonationAt: d.lastDonationAt } : {}),
+      area: d.area, latitude: d.lat, longitude: d.lng, ...(d.lastDonationAt ? { lastDonationAt: d.lastDonationAt } : {}), ...(d.community ? { community: d.community } : {}),
     })),
 
   // Current account; donors also get a safe profile summary (no phone).
@@ -115,9 +115,10 @@ export const api = {
   cancel: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/cancel`), "cancelled"),
   // Released one donor at a time and logged by the API.
   contact: (id: number, donorId: number) => call<Contact>("POST", `/blood-requests/${id}/matches/${donorId}/contact`),
-  matches: async (id: number, maxDistanceKm: number) =>
-    (await call<(Omit<Match, "name" | "group" | "km" | "lat" | "lng"> & { displayName: string; bloodGroup: ApiGroup; distanceKm: number; latitude: number; longitude: number })[]>("POST", `/blood-requests/${id}/matches?maxDistanceKm=${maxDistanceKm}`))
-      .map((m) => ({ donorId: m.donorId, name: m.displayName, group: toGroup(m.bloodGroup), area: m.area, lat: m.latitude, lng: m.longitude, km: m.distanceKm, eligibility: m.eligibility })),
+  communities: () => call<{ name: string; donors: number }[]>("GET", "/blood-requests/communities"),
+  matches: async (id: number, maxDistanceKm: number, community?: string) =>
+    (await call<(Omit<Match, "name" | "group" | "km" | "lat" | "lng"> & { displayName: string; bloodGroup: ApiGroup; distanceKm: number; latitude: number; longitude: number })[]>("POST", `/blood-requests/${id}/matches?maxDistanceKm=${maxDistanceKm}${community ? `&community=${encodeURIComponent(community)}` : ""}`))
+      .map((m) => ({ donorId: m.donorId, name: m.displayName, group: toGroup(m.bloodGroup), area: m.area, community: m.community, lat: m.latitude, lng: m.longitude, km: m.distanceKm, eligibility: m.eligibility })),
   outreach: async (id: number) =>
     (await call<{ donorId: number; displayName: string; bloodGroup: ApiGroup; area: string; latitude: number; longitude: number; distanceKm: number; email: string; phone: string; status: string; updatedAt: string }[]>("GET", `/blood-requests/${id}/outreach`))
       .map((o) => ({ donorId: o.donorId, name: o.displayName, group: toGroup(o.bloodGroup), area: o.area, lat: o.latitude, lng: o.longitude, km: o.distanceKm, email: o.email, phone: o.phone, status: o.status.toLowerCase() as OutreachStatus, updatedAt: Date.parse(o.updatedAt) })),

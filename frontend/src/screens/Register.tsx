@@ -27,7 +27,7 @@ export function Register({ onDone, onBack }: { onDone: (r: Role, email: string) 
     try {
       const s = await api.register({
         email: String(f.get("email")), password: String(f.get("password")), displayName: String(f.get("name")), phone: String(f.get("phone")),
-        group, area: loc.area, lat: loc.lat, lng: loc.lng, lastDonationAt: lastDonation?.toISOString(),
+        group, area: loc.area, lat: loc.lat, lng: loc.lng, lastDonationAt: lastDonation?.toISOString(), community: String(f.get("community") || "").trim() || undefined,
       })
       toast.success("Welcome to RaktSetu", { description: "You're on the registry. We'll only reach out when you can really help." })
       onDone(s.role, s.email)
@@ -71,6 +71,9 @@ export function Register({ onDone, onBack }: { onDone: (r: Role, email: string) 
                   <span className="relative">{g}</span>
                 </button>
               ))}
+            </div>
+            <div className="mt-5">
+              <Field label="College or community (optional)" name="community" maxLength={60} autoComplete="organization" placeholder="e.g. COEP, Infosys Hinjawadi, your society" hint="Lets your college or society call on its own donors first." />
             </div>
           </Section>
 

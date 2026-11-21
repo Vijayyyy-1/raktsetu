@@ -6,6 +6,9 @@ import { PrismaService } from '../prisma.service';
 import { encrypt } from '../common/crypto';
 import { LoginDto, RegisterDto } from './auth.dto';
 
+// "  coep  pune " and "COEP Pune" should land in the same community.
+export const tidyCommunity = (c?: string) => c?.trim().replace(/\s+/g, ' ') || null;
+
 @Injectable()
 export class AuthService {
   constructor(private prisma: PrismaService, private jwt: JwtService) {}
@@ -21,7 +24,7 @@ export class AuthService {
         passwordHash: await bcrypt.hash(dto.password, 12),
         role: UserRole.DONOR,
         donor: { create: {
-          displayName: dto.displayName.trim(), bloodGroup: dto.bloodGroup, phoneEncrypted: encrypt(dto.phone), area: dto.area.trim(),
+          displayName: dto.displayName.trim(), bloodGroup: dto.bloodGroup, phoneEncrypted: encrypt(dto.phone), area: dto.area.trim(), community: tidyCommunity(dto.community),
           latitude: dto.latitude, longitude: dto.longitude, lastDonationAt: dto.lastDonationAt ? new Date(dto.lastDonationAt) : null,
           ...(dto.lastDonationAt ? { donations: { create: { donatedAt: new Date(dto.lastDonationAt) } } } : {}),
         } },

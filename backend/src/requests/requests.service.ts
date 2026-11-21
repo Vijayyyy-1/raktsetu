@@ -84,15 +84,20 @@ export class RequestsService {
     if (request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is not open');
     return this.one(await this.prisma.bloodRequest.update({ where: { id }, data: { verified: true, verifiedById: Number(user.sub), verifiedAt: new Date() }, select: publicFields }));
   }
-  async match(id: number, maxDistanceKm = 50) {
+  // Communities with at least one donor, for the coordinator's filter.
+  async communities() {
+    const rows = await this.prisma.donor.groupBy({ by: ['community'], where: { community: { not: null }, account: { isActive: true } }, _count: true, orderBy: { community: 'asc' } });
+    return rows.map((r) => ({ name: r.community!, donors: r._count }));
+  }
+  async match(id: number, maxDistanceKm = 50, community?: string) {
     const request = await this.requestOrFail(id);
     if (request.status !== RequestStatus.OPEN || !request.verified) throw new BadRequestException('Request must be open and verified before matching');
-    const donors = await this.prisma.donor.findMany({ where: { available: true, bloodGroup: { in: compatibleDonorGroups(request.bloodGroup) }, account: { isActive: true, role: UserRole.DONOR } }, });
+    const donors = await this.prisma.donor.findMany({ where: { available: true, bloodGroup: { in: compatibleDonorGroups(request.bloodGroup) }, account: { isActive: true, role: UserRole.DONOR }, ...(community ? { community: { equals: community, mode: 'insensitive' } } : {}) } });
     const now = new Date();
     return donors.map((donor) => ({ donor, distance: distanceKm(request.latitude, request.longitude, donor.latitude, donor.longitude) }))
       .filter(({ donor, distance }) => eligible(donor.lastDonationAt, now) && distance <= maxDistanceKm)
       .sort((a, b) => a.distance - b.distance)
-      .map(({ donor, distance }) => ({ donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, latitude: approx(donor.latitude), longitude: approx(donor.longitude), distanceKm: Math.round(distance * 10) / 10, eligibility: 'Estimated eligible; must be confirmed with the donor and medical staff.' }));
+      .map(({ donor, distance }) => ({ donorId: donor.id, displayName: donor.displayName, bloodGroup: donor.bloodGroup, area: donor.area, community: donor.community, latitude: approx(donor.latitude), longitude: approx(donor.longitude), distanceKm: Math.round(distance * 10) / 10, eligibility: 'Estimated eligible; must be confirmed with the donor and medical staff.' }));
   }
   // Contact details are released one donor at a time, on purpose, and logged — never in bulk with match results.
   async contact(id: number, donorId: number, user: AuthUser) {

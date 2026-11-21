@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
+import { IsDateString, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { BloodGroup } from '@prisma/client';
 
 export class RegisterDto {
@@ -12,6 +12,7 @@ export class RegisterDto {
   @ApiProperty() @IsNumber() @Min(-90) @Max(90) latitude: number;
   @ApiProperty() @IsNumber() @Min(-180) @Max(180) longitude: number;
   @ApiProperty({ required: false }) @IsOptional() @IsDateString() lastDonationAt?: string;
+  @ApiProperty({ required: false, description: 'College, workplace or housing society' }) @IsOptional() @IsString() @MaxLength(60) community?: string;
 }
 
 export class LoginDto {

@@ -16,6 +16,7 @@ export class CreateRequestDto {
 
 export class MatchQueryDto {
   @ApiProperty({ required: false, default: 50 }) @IsOptional() @Type(() => Number) @IsNumber() @Min(1) @Max(200) maxDistanceKm?: number;
+  @ApiProperty({ required: false, description: 'Only donors from this college / community' }) @IsOptional() @IsString() community?: string;
 }
 
 export class OutreachDto {

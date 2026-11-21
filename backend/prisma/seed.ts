@@ -4,10 +4,10 @@ import { encrypt } from '../src/common/crypto';
 
 const prisma = new PrismaClient();
 const demoDonors = [
-  { email: 'anaya@example.test', displayName: 'Anaya (Demo)', bloodGroup: BloodGroup.B_POSITIVE, phone: '+910000000001', area: 'Kothrud', latitude: 18.5074, longitude: 73.8077, daysAgo: 130 },
-  { email: 'rohan@example.test', displayName: 'Rohan (Demo)', bloodGroup: BloodGroup.O_POSITIVE, phone: '+910000000002', area: 'Deccan', latitude: 18.5167, longitude: 73.8418, daysAgo: 18 },
-  { email: 'meera@example.test', displayName: 'Meera (Demo)', bloodGroup: BloodGroup.O_NEGATIVE, phone: '+910000000003', area: 'Shivajinagar', latitude: 18.5308, longitude: 73.8475, daysAgo: 100 },
-  { email: 'kabir@example.test', displayName: 'Kabir (Demo)', bloodGroup: BloodGroup.B_POSITIVE, phone: '+910000000004', area: 'Baner', latitude: 18.559, longitude: 73.7868, daysAgo: 75 },
+  { email: 'anaya@example.test', displayName: 'Anaya (Demo)', bloodGroup: BloodGroup.B_POSITIVE, phone: '+910000000001', area: 'Kothrud', latitude: 18.5074, longitude: 73.8077, daysAgo: 130, community: 'COEP' },
+  { email: 'rohan@example.test', displayName: 'Rohan (Demo)', bloodGroup: BloodGroup.O_POSITIVE, phone: '+910000000002', area: 'Deccan', latitude: 18.5167, longitude: 73.8418, daysAgo: 18, community: 'Fergusson College' },
+  { email: 'meera@example.test', displayName: 'Meera (Demo)', bloodGroup: BloodGroup.O_NEGATIVE, phone: '+910000000003', area: 'Shivajinagar', latitude: 18.5308, longitude: 73.8475, daysAgo: 100, community: 'COEP' },
+  { email: 'kabir@example.test', displayName: 'Kabir (Demo)', bloodGroup: BloodGroup.B_POSITIVE, phone: '+910000000004', area: 'Baner', latitude: 18.559, longitude: 73.7868, daysAgo: 75, community: 'MIT-WPU' },
 ];
 
 async function main() {
@@ -23,7 +23,8 @@ async function main() {
     const account = await prisma.account.upsert({ where: { email: item.email }, update: {}, create: {
       email: item.email, passwordHash: await bcrypt.hash('DonorDemo123!', 12), role: UserRole.DONOR,
     } });
-    const donor = await prisma.donor.upsert({ where: { accountId: account.id }, update: {}, create: {
+    const donor = await prisma.donor.upsert({ where: { accountId: account.id }, update: { community: item.community }, create: {
+      community: item.community,
       accountId: account.id, displayName: item.displayName, bloodGroup: item.bloodGroup,
       phoneEncrypted: encrypt(item.phone), area: item.area, latitude: item.latitude, longitude: item.longitude,
       available: true, lastDonationAt: new Date(Date.now() - item.daysAgo * 86400000),
@@ -62,13 +63,16 @@ async function main() {
     'B_POSITIVE', 'O_POSITIVE', 'A_POSITIVE', 'O_NEGATIVE', 'B_POSITIVE', 'AB_POSITIVE', 'O_POSITIVE', 'A_POSITIVE', 'B_POSITIVE', 'O_POSITIVE'];
   // null = first-time donor; small numbers = donated recently (not yet eligible).
   const DAYS_AGO: (number | null)[] = [null, 120, 30, 200, null, 95, 15, 400, 60, null, 150, 88, 365, null, 45, 110, 20, null, 250, 70, 180, null, 10, 140, 90, 300, null, 55, 130, 75];
+  // College / workplace / society, so coordinators can demo community-only matching. null = didn't say.
+  const COMMUNITIES = ['COEP', 'Fergusson College', 'MIT-WPU', 'Infosys Hinjawadi', 'Magarpatta City Society', null];
   const communityHash = await bcrypt.hash('DonorDemo123!', 12); // one hash, reused: bcrypt is slow on purpose
   for (let i = 0; i < NAMES.length; i++) {
     const [area, lat, lng] = AREAS[i % AREAS.length];
     const email = `${NAMES[i].toLowerCase()}.${i + 1}@example.test`;
     const account = await prisma.account.upsert({ where: { email }, update: {}, create: { email, passwordHash: communityHash, role: UserRole.DONOR } });
     const days = DAYS_AGO[i];
-    await prisma.donor.upsert({ where: { accountId: account.id }, update: {}, create: {
+    await prisma.donor.upsert({ where: { accountId: account.id }, update: { community: COMMUNITIES[i % COMMUNITIES.length] }, create: {
+      community: COMMUNITIES[i % COMMUNITIES.length],
       accountId: account.id, displayName: NAMES[i], bloodGroup: GROUPS[i], phoneEncrypted: encrypt(`+9100000${String(100 + i).padStart(5, '0')}`),
       area, latitude: lat + ((i * 37) % 17 - 8) / 1000, longitude: lng + ((i * 53) % 17 - 8) / 1000, // ~±1 km spread, rounded later
       available: i % 9 !== 4, // a few have paused alerts
