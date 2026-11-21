@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
+import { useQueryClient } from "@tanstack/react-query"
 import { LogOut } from "lucide-react"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/sonner"
@@ -37,7 +38,9 @@ export default function App() {
     return () => clearInterval(t)
   }, [])
 
-  const signOut = useCallback(() => (clearToken(), setSession(null), setRequests(null), setMatchId(null)), [])
+  const qc = useQueryClient()
+  // Clearing the query cache keeps the next account from seeing this one's alerts, profile or responses.
+  const signOut = useCallback(() => (clearToken(), qc.clear(), setSession(null), setRequests(null), setMatchId(null)), [qc])
   // Braces matter: returning the handler would make React call it as the effect's cleanup.
   useEffect(() => {
     setUnauthorizedHandler(() => (signOut(), toast("Session expired — please sign in again")))

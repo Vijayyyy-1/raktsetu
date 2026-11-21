@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "framer-motion"
 import { Bell, BellRing, MapPin } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { BloodChip, Btn, UrgencyTag } from "@/components/bits"
-import { api, requestLabel, type DonorAlert } from "@/api"
+import { api, requestLabel } from "@/api"
 
 const POLL_MS = 30_000
 const canNotify = typeof window !== "undefined" && "Notification" in window
@@ -13,31 +14,30 @@ const canNotify = typeof window !== "undefined" && "Notification" in window
  * availability and eligibility). Badge for unread; a desktop notification for new ones while the app is open.
  */
 export function AlertBell({ onOpenRequests }: { onOpenRequests: () => void }) {
-  const [alerts, setAlerts] = useState<DonorAlert[]>([])
-  const [unread, setUnread] = useState(0)
+  const qc = useQueryClient()
+  const { data } = useQuery({ queryKey: ["alerts"], queryFn: api.alerts, refetchInterval: POLL_MS })
+  const alerts = data?.alerts ?? []
+  const unread = data?.unread ?? 0
+  const seen = useMutation({
+    mutationFn: api.markAlertsSeen,
+    // Clears the badge only; the dots on each row stay until the next poll so the donor can see what was new.
+    onSuccess: () => qc.setQueryData(["alerts"], (d: typeof data) => d && { ...d, unread: 0 }),
+  })
   const [open, setOpen] = useState(false)
   const [perm, setPerm] = useState(canNotify ? Notification.permission : "denied")
   const known = useRef<Set<number> | null>(null) // ids seen on the previous poll; null until the first load
 
   useEffect(() => {
-    let live = true
-    const load = () => api.alerts().then((a) => {
-      if (!live) return
-      const fresh = a.alerts.filter((x) => x.unread && known.current && !known.current.has(x.id))
-      if (canNotify && Notification.permission === "granted")
-        fresh.forEach((x) => new Notification(`${x.group} needed · ${x.km} km away`, { body: `${x.hospital} · ${x.units} unit${x.units > 1 ? "s" : ""}. Open RaktSetu to raise your hand.`, tag: `rq-${x.id}` }))
-      known.current = new Set(a.alerts.map((x) => x.id))
-      setAlerts(a.alerts)
-      setUnread(a.unread)
-    }).catch(() => {})
-    load()
-    const t = setInterval(load, POLL_MS)
-    return () => (live = false, clearInterval(t))
-  }, [])
+    if (!data) return
+    const fresh = data.alerts.filter((x) => x.unread && known.current && !known.current.has(x.id))
+    if (canNotify && Notification.permission === "granted")
+      fresh.forEach((x) => new Notification(`${x.group} needed · ${x.km} km away`, { body: `${x.hospital} · ${x.units} unit${x.units > 1 ? "s" : ""}. Open RaktSetu to raise your hand.`, tag: `rq-${x.id}` }))
+    known.current = new Set(data.alerts.map((x) => x.id))
+  }, [data])
 
   const toggle = (o: boolean) => {
     setOpen(o)
-    if (o && unread) api.markAlertsSeen().then(() => setUnread(0)).catch(() => {})
+    if (o && unread) seen.mutate()
   }
 
   return (

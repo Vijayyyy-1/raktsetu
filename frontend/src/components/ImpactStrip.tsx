@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { motion } from "framer-motion"
 import { TrendingUp } from "lucide-react"
-import { api, type Impact } from "@/api"
+import { api } from "@/api"
 
 const dur = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`)
 
 /** Last-30-day outcomes in one line: what the coordinator desk actually achieved. Refetches when requests change. */
-export function ImpactStrip({ refreshKey }: { refreshKey: string }) {
-  const [i, setI] = useState<Impact | null>(null)
-  useEffect(() => void api.impact().then(setI).catch(() => {}), [refreshKey])
+export function ImpactStrip() {
+  // "desk" prefix: Requests invalidates it after every change; the interval picks up other coordinators' work.
+  const { data: i } = useQuery({ queryKey: ["desk", "impact"], queryFn: api.impact, refetchInterval: 30_000 })
   if (!i) return null
 
   const items = [

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "framer-motion"
 import { AlertTriangle, ArrowRight, LayoutGrid, Map as MapIcon, Building2, CheckCircle2, Hand, Loader2, Users, MapPin, MoreHorizontal, Plus, RefreshCw, Share2, ShieldCheck, X } from "lucide-react"
 import { toast } from "sonner"
@@ -6,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { BloodChip, Btn, SPRING, SectionHead, StatusTag, UrgencyTag, VerifiedTag, fadeUp, popIn } from "@/components/bits"
-import { api, distanceKm, requestLabel, type DonorProfile, type LiveRequest, type OutreachStatus, type Supply } from "@/api"
+import { api, distanceKm, requestLabel, type LiveRequest, type OutreachStatus, type Supply } from "@/api"
 import { CAN_RECEIVE, GROUPS, HOSPITALS, type Group, type RequestStatus, type Urgency } from "@/data"
 import { RequestsMap } from "@/components/RequestsMap"
 import { ImpactStrip } from "@/components/ImpactStrip"
@@ -55,28 +56,22 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   const [tab, setTab] = useState<Tab>(readOnly ? "mine" : "active")
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<"cards" | "map">("cards")
-  const [me, setMe] = useState<DonorProfile | null>(null)
-  const [responses, setResponses] = useState<Record<number, OutreachStatus>>({})
-  useEffect(() => {
-    if (!readOnly) return
-    api.me().then(setMe).catch((e) => toast.error(e.message))
-    api.myResponses().then(setResponses).catch(() => {})
-  }, [readOnly])
+  const qc = useQueryClient()
+  const toastErr = (e: Error): never => { toast.error(e.message); throw e }
+  const me = useQuery({ queryKey: ["me"], queryFn: () => api.me().catch(toastErr), enabled: !!readOnly }).data ?? null
+  const responses = useQuery({ queryKey: ["responses"], queryFn: api.myResponses, enabled: !!readOnly }).data ?? {}
+  const setResponse = (id: number, s: OutreachStatus | null) =>
+    qc.setQueryData(["responses"], ({ [id]: _, ...rest }: Record<number, OutreachStatus> = {}) => (s ? { ...rest, [id]: s } : rest))
   const all = requests ?? []
-  const ids = all.map((r) => r.id).join()
-  // Coordinator: eligible-donor coverage per request; refetched whenever the set of requests changes.
-  const [supply, setSupply] = useState<Record<number, Supply>>({})
-  useEffect(() => {
-    if (readOnly || !ids) return
-    api.supply().then((rows) => setSupply(Object.fromEntries(rows.map((r) => [r.id, r])))).catch(() => {})
-  }, [readOnly, ids])
-  const setResponse = (id: number, s: OutreachStatus | null) => setResponses(({ [id]: _, ...rest }) => (s ? { ...rest, [id]: s } : rest))
-  // Coordinator: closed history from the API (last 30 days) plus anything closed or expired in this session.
-  const [history, setHistory] = useState<LiveRequest[]>([])
-  useEffect(() => {
-    if (readOnly || tab !== "closed") return
-    api.closedRequests().then(setHistory).catch((e) => toast.error(e.message))
-  }, [readOnly, tab, ids])
+  // Coordinator queries share the "desk" prefix: any change made here invalidates them; the interval catches the rest.
+  const change = (r: LiveRequest) => (onChange(r), qc.invalidateQueries({ queryKey: ["desk"] }))
+  // Eligible-donor coverage per request.
+  const supply = useQuery({
+    queryKey: ["desk", "supply"], queryFn: api.supply, enabled: !readOnly && all.length > 0, refetchInterval: 30_000,
+    select: (rows): Record<number, Supply> => Object.fromEntries(rows.map((r) => [r.id, r])),
+  }).data ?? {}
+  // Closed history from the API (last 30 days) plus anything closed or expired in this session.
+  const history = useQuery({ queryKey: ["desk", "closed"], queryFn: () => api.closedRequests().catch(toastErr), enabled: !readOnly && tab === "closed" }).data ?? []
   const sessionClosed = all.filter((r) => statusOf(r, now) !== "open")
   const closed = [...sessionClosed.filter((r) => !history.some((h) => h.id === r.id)), ...history]
   const active = all.filter((r) => statusOf(r, now) === "open")
@@ -121,7 +116,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
         </div>
       )}
 
-      {!readOnly && <ImpactStrip refreshKey={ids} />}
+      {!readOnly && <ImpactStrip />}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex w-fit rounded-full bg-white/70 p-1 shadow-sm">
@@ -158,14 +153,14 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
         <motion.div layout className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {shown.map(({ r, km, canGive }, i) => (
-              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={onChange} onMatch={onMatch} />
+              <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={change} onMatch={onMatch} />
             ))}
           </AnimatePresence>
           {shown.length === 0 && <p className="col-span-full py-12 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
         </motion.div>
       )}
 
-      {!readOnly && <NewRequestDialog open={open} onOpenChange={setOpen} onCreate={(r) => (onChange(r), setTab("active"))} />}
+      {!readOnly && <NewRequestDialog open={open} onOpenChange={setOpen} onCreate={(r) => (change(r), setTab("active"))} />}
     </motion.div>
   )
 }
