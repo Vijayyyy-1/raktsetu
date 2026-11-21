@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DatePicker } from "@/components/DatePicker"
+import { Reminders } from "@/components/Reminders"
 import { BloodChip, Btn, EstimateNote, SPRING, SectionHead, fadeUp, popIn } from "@/components/bits"
 import { api, distanceKm, requestLabel, type Donation, type DonorProfile, type Eligibility, type LiveRequest } from "@/api"
 import { CAN_RECEIVE } from "@/data"
@@ -78,6 +79,8 @@ export function DonorHome({ requests, now }: { requests: LiveRequest[] | null; n
           </div>
         </motion.div>
       )}
+
+      <Reminders me={me} elig={elig} now={now} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
         <motion.div {...popIn(0)} className="soft-card p-7">
