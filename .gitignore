@@ -12,3 +12,4 @@ coverage/
 # Firebase config and service-account keys (never commit)
 google-services.json
 firebase-service-account*.json
+*firebase-adminsdk*.json
