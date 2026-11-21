@@ -61,6 +61,8 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
     api.me().then(setMe).catch((e) => toast.error(e.message))
     api.myResponses().then(setResponses).catch(() => {})
   }, [readOnly])
+  const all = requests ?? []
+  const ids = all.map((r) => r.id).join()
   // Coordinator: eligible-donor coverage per request; refetched whenever the set of requests changes.
   const [supply, setSupply] = useState<Record<number, Supply>>({})
   useEffect(() => {
@@ -68,8 +70,6 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
     api.supply().then((rows) => setSupply(Object.fromEntries(rows.map((r) => [r.id, r])))).catch(() => {})
   }, [readOnly, ids])
   const setResponse = (id: number, s: OutreachStatus | null) => setResponses(({ [id]: _, ...rest }) => (s ? { ...rest, [id]: s } : rest))
-  const all = requests ?? []
-  const ids = all.map((r) => r.id).join()
   // Coordinator: closed history from the API (last 30 days) plus anything closed or expired in this session.
   const [history, setHistory] = useState<LiveRequest[]>([])
   useEffect(() => {
