@@ -82,6 +82,28 @@ async function main() {
     } });
   }
 
+  // More open requests around Pune so the donor feed and coordinator desk aren't empty. Each run re-opens them with a
+  // fresh expiry (status/units reset) but keeps the original verification time, so donors don't get re-alerted.
+  // Two sit outside the 15 km "For you" radius (Talegaon ~27 km, Lonavala ~60 km) to show the distance filter.
+  const hours = (n: number) => new Date(Date.now() + n * 3600000);
+  const moreRequests = [
+    { hospitalName: 'Sassoon General Hospital', area: 'Station Road', latitude: 18.5286, longitude: 73.8743, bloodGroup: BloodGroup.O_POSITIVE, units: 3, urgency: RequestUrgency.URGENT, expiresAt: hours(10), verified: true },
+    { hospitalName: 'KEM Hospital', area: 'Rasta Peth', latitude: 18.5196, longitude: 73.8653, bloodGroup: BloodGroup.A_POSITIVE, units: 1, urgency: RequestUrgency.CRITICAL, expiresAt: hours(3), verified: true },
+    { hospitalName: 'Jehangir Hospital', area: 'Camp', latitude: 18.5308, longitude: 73.8766, bloodGroup: BloodGroup.B_NEGATIVE, units: 1, urgency: RequestUrgency.ROUTINE, expiresAt: hours(30), verified: true },
+    { hospitalName: 'Deenanath Mangeshkar Hospital', area: 'Erandwane', latitude: 18.5028, longitude: 73.8283, bloodGroup: BloodGroup.AB_NEGATIVE, units: 1, urgency: RequestUrgency.URGENT, expiresAt: hours(8), verified: true },
+    { hospitalName: 'Sahyadri Hospital', area: 'Deccan', latitude: 18.5155, longitude: 73.8418, bloodGroup: BloodGroup.O_NEGATIVE, units: 2, urgency: RequestUrgency.CRITICAL, expiresAt: hours(4), verified: true },
+    { hospitalName: 'Bharati Hospital', area: 'Dhankawadi', latitude: 18.457, longitude: 73.858, bloodGroup: BloodGroup.B_POSITIVE, units: 2, urgency: RequestUrgency.ROUTINE, expiresAt: hours(36), verified: true },
+    { hospitalName: 'Talegaon General Hospital', area: 'Talegaon Dabhade', latitude: 18.735, longitude: 73.675, bloodGroup: BloodGroup.B_POSITIVE, units: 1, urgency: RequestUrgency.URGENT, expiresAt: hours(12), verified: true },
+    { hospitalName: 'Lonavala Rural Hospital', area: 'Lonavala', latitude: 18.7546, longitude: 73.4062, bloodGroup: BloodGroup.O_POSITIVE, units: 1, urgency: RequestUrgency.URGENT, expiresAt: hours(12), verified: true },
+    { hospitalName: 'Pune Adventist Hospital', area: 'Salisbury Park', latitude: 18.4966, longitude: 73.8714, bloodGroup: BloodGroup.A_NEGATIVE, units: 1, urgency: RequestUrgency.URGENT, expiresAt: hours(6), verified: false }, // for the coordinator to verify
+  ];
+  for (const r of moreRequests) {
+    const existing = await prisma.bloodRequest.findFirst({ where: { hospitalName: r.hospitalName, bloodGroup: r.bloodGroup, createdById: coordinator.id } });
+    const fresh = { ...r, status: RequestStatus.OPEN, unitsReceived: 0 };
+    if (existing) await prisma.bloodRequest.update({ where: { id: existing.id }, data: { ...fresh, ...(r.verified && !existing.verifiedAt ? { verifiedById: coordinator.id, verifiedAt: new Date() } : {}) } });
+    else await prisma.bloodRequest.create({ data: { ...fresh, createdById: coordinator.id, ...(r.verified ? { verifiedById: coordinator.id, verifiedAt: new Date() } : {}) } });
+  }
+
   // Demo drives, always a few days ahead so the demo never shows past events. Matched by title to stay idempotent.
   const day = (n: number, hour: number) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(hour, 0, 0, 0); return d; };
   const demoDrives = [
@@ -119,7 +141,7 @@ async function main() {
     await prisma.outreach.createMany({ data: fits.map((d, i) => ({ requestId: req.id, donorId: d.id, status: i === 0 ? OutreachStatus.COMING : OutreachStatus.RESPONDED, createdAt, updatedAt: closedAt })), skipDuplicates: true });
   }
 
-  console.log(`Seeded coordinator ${coordinatorEmail}, ${demoDonors.length + NAMES.length} fictional donors, demo request ${request.id}, and ${demoDrives.length} demo drives.`);
+  console.log(`Seeded coordinator ${coordinatorEmail}, ${demoDonors.length + NAMES.length} fictional donors, demo request ${request.id}, ${moreRequests.length} more requests, and ${demoDrives.length} demo drives.`);
 }
 
 main().finally(() => prisma.$disconnect());
