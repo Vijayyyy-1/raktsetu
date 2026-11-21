@@ -6,7 +6,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { Logo } from "@/components/bits"
 import { BloodGuide } from "@/components/BloodGuide"
 import { api, clearToken, setUnauthorizedHandler, type LiveRequest, type Role } from "@/api"
-import { Login } from "@/screens/Login"
+import { DEMO_ACCOUNTS, Login, loginErrorText } from "@/screens/Login"
+import { Landing } from "@/screens/Landing"
 import { Register } from "@/screens/Register"
 import { Requests } from "@/screens/Requests"
 import { Matches } from "@/screens/Matches"
@@ -22,7 +23,8 @@ const NAV: Record<Role, { id: string; label: string }[]> = {
 
 export default function App() {
   const [session, setSession] = useState<{ role: Role; email: string; name?: string | null } | null>(null)
-  const [registering, setRegistering] = useState(false)
+  const [authView, setAuthView] = useState<"landing" | "login" | "register">("landing")
+  const [loginRole, setLoginRole] = useState<Role>("coordinator")
   const [page, setPage] = useState("requests")
   const [matchId, setMatchId] = useState<number | null>(null)
   const [requests, setRequests] = useState<LiveRequest[] | null>(null)
@@ -34,7 +36,10 @@ export default function App() {
   }, [])
 
   const signOut = useCallback(() => (clearToken(), setSession(null), setRequests(null), setMatchId(null)), [])
-  useEffect(() => setUnauthorizedHandler(() => (signOut(), toast("Session expired — please sign in again"))), [signOut])
+  // Braces matter: returning the handler would make React call it as the effect's cleanup.
+  useEffect(() => {
+    setUnauthorizedHandler(() => (signOut(), toast("Session expired — please sign in again")))
+  }, [signOut])
 
   // The API lists only open requests; keep ones closed during this session so the "Closed" tab has something to show.
   const load = useCallback(async () => {
@@ -61,7 +66,17 @@ export default function App() {
   }, [session, load])
 
   const upsert = (r: LiveRequest) => setRequests((rs) => [r, ...(rs ?? []).filter((x) => x.id !== r.id)])
-  const enter = (role: Role, email: string) => (setSession({ role, email }), setRegistering(false), setPage(NAV[role][0].id), setMatchId(null))
+  const enter = (role: Role, email: string) => (setSession({ role, email }), setAuthView("landing"), setPage(NAV[role][0].id), setMatchId(null))
+  const demo = async (role: Role) => {
+    const acct = DEMO_ACCOUNTS[role]
+    if (!acct.password) return setLoginRole(role), setAuthView("login")
+    try {
+      const s = await api.login(acct.email, acct.password)
+      enter(s.role, s.email)
+    } catch (e) {
+      toast.error(loginErrorText(e))
+    }
+  }
   const matchReq = requests?.find((r) => r.id === matchId)
 
   return (
@@ -69,8 +84,14 @@ export default function App() {
       <Toaster position="bottom-right" toastOptions={{ className: "!rounded-2xl !border-0 !shadow-xl font-sans" }} />
       <AnimatePresence mode="wait">
         {!session ? (
-          <motion.div key={registering ? "register" : "login"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            {registering ? <Register onDone={enter} onBack={() => setRegistering(false)} /> : <Login onLogin={enter} onRegister={() => setRegistering(true)} />}
+          <motion.div key={authView} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {authView === "register" ? (
+              <Register onDone={enter} onBack={() => setAuthView("login")} />
+            ) : authView === "login" ? (
+              <Login key={loginRole} initialRole={loginRole} onLogin={enter} onRegister={() => setAuthView("register")} onBack={() => setAuthView("landing")} />
+            ) : (
+              <Landing onSignIn={() => setAuthView("login")} onRegister={() => setAuthView("register")} onDemo={demo} />
+            )}
           </motion.div>
         ) : (
           <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen">
