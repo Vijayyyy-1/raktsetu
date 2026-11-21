@@ -12,6 +12,7 @@ import { Register } from "@/screens/Register"
 import { Requests } from "@/screens/Requests"
 import { Matches } from "@/screens/Matches"
 import { DonorHome } from "@/screens/DonorHome"
+import { AlertBell } from "@/components/AlertBell"
 import { Drives } from "@/screens/Drives"
 import { cn } from "@/lib/utils"
 
@@ -105,21 +106,22 @@ export default function App() {
         ) : (
           <motion.div key="app" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-screen">
             <header className="sticky top-0 z-40 px-4 pt-4 sm:px-6">
-              <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 rounded-full border border-blood/10 bg-white/95 pl-4 pr-2 sm:gap-4 sm:pl-6 shadow-[0_1px_2px_hsl(350_40%_30%/0.06),0_12px_32px_-14px_hsl(0_60%_40%/0.35)] backdrop-blur-xl">
+              <div className="mx-auto flex h-16 max-w-7xl items-center gap-1.5 rounded-full border border-blood/10 bg-white/95 pl-4 pr-2 sm:gap-4 sm:pl-6 shadow-[0_1px_2px_hsl(350_40%_30%/0.06),0_12px_32px_-14px_hsl(0_60%_40%/0.35)] backdrop-blur-xl">
                 <Logo className="shrink-0 [&>span]:hidden sm:[&>span]:inline" />
                 <nav className="ml-auto flex min-w-0 gap-1 rounded-full bg-secondary p-1 sm:ml-6 sm:mr-auto">
                   {NAV[session.role].map((n) => (
                     <button
                       key={n.id}
                       onClick={() => (setPage(n.id), setMatchId(null))}
-                      className={cn("relative rounded-full px-3 py-2 text-sm font-semibold transition-colors sm:px-4", page === n.id ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+                      className={cn("relative rounded-full px-2.5 py-2 text-sm font-semibold transition-colors sm:px-4", page === n.id ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
                       {page === n.id && <motion.span layoutId="nav" className="absolute inset-0 rounded-full bg-white shadow-sm" transition={{ type: "spring", stiffness: 260, damping: 26 }} />}
                       <span className="relative whitespace-nowrap">{n.label}</span>
                     </button>
                   ))}
                 </nav>
-                <BloodGuide />
+                {session.role === "donor" && <AlertBell onOpenRequests={() => (setPage("requests"), setMatchId(null))} />}
+                <span className="hidden sm:contents"><BloodGuide /></span>
                 <button onClick={signOut} className="flex items-center gap-2 rounded-full p-1.5 text-sm font-semibold transition-colors hover:bg-muted sm:pr-4" aria-label="Sign out">
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-blood-soft text-xs font-bold uppercase text-blood">{initials(session.name ?? session.email)}</span>
                   <span className="hidden text-left leading-tight sm:block">

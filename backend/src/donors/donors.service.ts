@@ -2,8 +2,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
 import { decrypt, encrypt } from '../common/crypto';
-import { eligible, DONATION_WAIT_DAYS } from '../common/matching';
+import { BloodGroup, RequestStatus } from '@prisma/client';
+import { compatibleDonorGroups, distanceKm, eligible, DONATION_WAIT_DAYS } from '../common/matching';
 import { CreateDonationDto, UpdateDonorDto } from './donors.dto';
+
+const ALERT_KM = 15;
 
 @Injectable()
 export class DonorsService {
@@ -51,6 +54,27 @@ export class DonorsService {
     const latest = await this.prisma.donation.findFirst({ where: { donorId }, orderBy: { donatedAt: 'desc' } });
     const donor = await this.prisma.donor.update({ where: { id: donorId }, data: { lastDonationAt: latest?.donatedAt ?? null } });
     return { ...donor, phone: decrypt(donor.phoneEncrypted), phoneEncrypted: undefined };
+  }
+  // Alerts are derived, not stored: verified open requests this donor's blood can serve, within ALERT_KM.
+  // Paused or not-yet-eligible donors get none, so nobody is pinged for a need they can't meet.
+  async alerts(user: AuthUser) {
+    const donor = await this.mine(user);
+    if (!donor.available || !eligible(donor.lastDonationAt)) return { unread: 0, alerts: [] };
+    const now = new Date();
+    const open = await this.prisma.bloodRequest.findMany({
+      where: { status: RequestStatus.OPEN, verified: true, expiresAt: { gt: now }, bloodGroup: { in: Object.values(BloodGroup).filter((g) => compatibleDonorGroups(g).includes(donor.bloodGroup)) } },
+      select: { id: true, bloodGroup: true, units: true, hospitalName: true, area: true, latitude: true, longitude: true, urgency: true, expiresAt: true, verifiedAt: true },
+      orderBy: { verifiedAt: 'desc' },
+    });
+    const alerts = open
+      .map((r) => ({ ...r, distanceKm: Math.round(distanceKm(donor.latitude, donor.longitude, r.latitude, r.longitude) * 10) / 10, unread: !donor.alertsSeenAt || (r.verifiedAt ?? now) > donor.alertsSeenAt }))
+      .filter((r) => r.distanceKm <= ALERT_KM);
+    return { unread: alerts.filter((a) => a.unread).length, alerts };
+  }
+  async markAlertsSeen(user: AuthUser) {
+    const donor = await this.mine(user);
+    await this.prisma.donor.update({ where: { id: donor.id }, data: { alertsSeenAt: new Date() } });
+    return { unread: 0 };
   }
   async eligibility(user: AuthUser) {
     const donor = await this.prisma.donor.findUnique({ where: { accountId: Number(user.sub) } });

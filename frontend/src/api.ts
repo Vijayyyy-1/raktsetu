@@ -53,6 +53,7 @@ export type LiveRequest = {
   closedAt?: number
   verifiedBy?: string | null
 }
+export type DonorAlert = { id: number; group: Group; units: number; hospital: string; area: string; urgency: Urgency; km: number; unread: boolean }
 export type Impact = { filled: number; fillRate: number | null; medianFillMinutes: number | null; unitsArranged: number; handsRaised: number; donors: number; eligibleNow: number }
 export type Supply = { id: number; within10: number; within25: number }
 export type OutreachStatus = "responded" | "called" | "no_answer" | "coming" | "declined" | "donated"
@@ -140,6 +141,11 @@ export const api = {
   addDonation: async (at: Date) => toDonor(await call<ApiDonor>("POST", "/donors/me/donations", { donatedAt: at.toISOString() })),
   removeDonation: async (id: number) => toDonor(await call<ApiDonor>("DELETE", `/donors/me/donations/${id}`)),
   updateMe: async (patch: Partial<{ available: boolean; lastDonationAt: string | null; area: string; latitude: number; longitude: number }>) => toDonor(await call<ApiDonor>("PATCH", "/donors/me", patch)),
+  alerts: async () => {
+    const r = await call<{ unread: number; alerts: { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; urgency: keyof typeof URG; distanceKm: number; unread: boolean }[] }>("GET", "/donors/me/alerts")
+    return { unread: r.unread, alerts: r.alerts.map((a): DonorAlert => ({ id: a.id, group: toGroup(a.bloodGroup), units: a.units, hospital: a.hospitalName, area: a.area, urgency: URG[a.urgency], km: a.distanceKm, unread: a.unread })) }
+  },
+  markAlertsSeen: () => call<{ unread: number }>("POST", "/donors/me/alerts/seen"),
   eligibility: () => call<Eligibility>("GET", "/donors/me/eligibility"),
 
   // Blood donation drives / camps

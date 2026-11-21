@@ -70,6 +70,7 @@ model Donor {
   available      Boolean    @default(true)
   lastDonationAt DateTime?
   community      String? // college, workplace or society the donor belongs to, for community drives and matching
+  alertsSeenAt   DateTime? // alerts for requests verified after this are unread
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   account        Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)

@@ -14,5 +14,7 @@ export class DonorsController {
   @Get('donations') donations(@CurrentUser() user: AuthUser) { return this.service.donations(user); }
   @Post('donations') addDonation(@CurrentUser() user: AuthUser, @Body() dto: CreateDonationDto) { return this.service.addDonation(user, dto); }
   @Delete('donations/:id') removeDonation(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) { return this.service.removeDonation(user, id); }
+  @Get('alerts') alerts(@CurrentUser() user: AuthUser) { return this.service.alerts(user); }
+  @Post('alerts/seen') alertsSeen(@CurrentUser() user: AuthUser) { return this.service.markAlertsSeen(user); }
   @Get('eligibility') eligibility(@CurrentUser() user: AuthUser) { return this.service.eligibility(user); }
 }
