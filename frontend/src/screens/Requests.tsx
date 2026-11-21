@@ -22,6 +22,23 @@ export function Countdown({ at, now, className }: { at: number; now: number; cla
   return <span className={cn("tabular-nums", className)}>{h > 0 ? `${h}h ${m}m` : `${m}m ${String(s % 60).padStart(2, "0")}s`}</span>
 }
 
+/** Units covered: donated (solid) and pledged (lighter), out of the units the request needs. */
+export function Progress({ req, compact }: { req: LiveRequest; compact?: boolean }) {
+  const pct = (n: number) => `${Math.min(100, (n / req.units) * 100)}%`
+  return (
+    <div className={compact ? "" : "mb-4 rounded-2xl bg-muted/60 p-4"}>
+      <div className="mb-1.5 flex justify-between text-xs">
+        <span className="text-muted-foreground"><b className="text-ok">{req.donated} donated</b> · <b className="text-blood">{req.coming} coming</b></span>
+        <span className="font-semibold">of {req.units} unit{req.units > 1 && "s"}</span>
+      </div>
+      <div className="relative h-1.5 overflow-hidden rounded-full bg-white">
+        <motion.div className="absolute inset-y-0 left-0 rounded-full bg-blood/35" animate={{ width: pct(req.donated + req.coming) }} />
+        <motion.div className="absolute inset-y-0 left-0 rounded-full bg-ok" animate={{ width: pct(req.donated) }} />
+      </div>
+    </div>
+  )
+}
+
 type Props = {
   requests: LiveRequest[] | null
   now: number
@@ -210,6 +227,8 @@ function RequestCard({ r, i, now, km, canGive, readOnly, onChange, onMatch }: { 
           </div>
         </div>
       )}
+
+      {!readOnly && isOpen && r.coming + r.donated > 0 && <div className="mt-4"><Progress req={r} compact /></div>}
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <VerifiedTag verified={r.verified} />

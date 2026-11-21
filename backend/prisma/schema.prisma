@@ -29,6 +29,14 @@ enum RequestUrgency {
   CRITICAL
 }
 
+enum OutreachStatus {
+  CALLED
+  NO_ANSWER
+  COMING
+  DECLINED
+  DONATED
+}
+
 enum RequestStatus {
   OPEN
   FULFILLED
@@ -65,6 +73,7 @@ model Donor {
   account        Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
   donations      Donation[]
   driveRsvps     DriveRsvp[]
+  outreach       Outreach[]
 
   @@index([bloodGroup, available])
 }
@@ -98,6 +107,7 @@ model BloodRequest {
   updatedAt         DateTime      @updatedAt
   createdBy         Account       @relation("RequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
   verifiedBy        Account?      @relation("RequestVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  outreach          Outreach[]
 
   @@index([status, expiresAt, bloodGroup])
 }
@@ -130,4 +140,17 @@ model DriveRsvp {
   donor     Donor    @relation(fields: [donorId], references: [id], onDelete: Cascade)
 
   @@id([driveId, donorId])
+}
+
+// One row per (request, donor) the coordinator has worked: who was called and what they said.
+model Outreach {
+  requestId Int
+  donorId   Int
+  status    OutreachStatus
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  request   BloodRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  donor     Donor          @relation(fields: [donorId], references: [id], onDelete: Cascade)
+
+  @@id([requestId, donorId])
 }

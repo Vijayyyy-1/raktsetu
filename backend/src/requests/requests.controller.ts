@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole, RequestStatus } from '@prisma/client';
 import { AuthUser, CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '../common/auth';
-import { CreateRequestDto, MatchQueryDto } from './requests.dto';
+import { CreateRequestDto, MatchQueryDto, OutreachDto } from './requests.dto';
 import { RequestsService } from './requests.service';
 
 @ApiTags('blood requests') @Controller('blood-requests')
@@ -16,6 +16,10 @@ export class RequestsController {
   verify(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) { return this.service.verify(id, user); }
   @Post(':id/matches') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   match(@Param('id', ParseIntPipe) id: number, @Query() query: MatchQueryDto) { return this.service.match(id, query.maxDistanceKm); }
+  @Get(':id/outreach') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  outreach(@Param('id', ParseIntPipe) id: number) { return this.service.outreach(id); }
+  @Put(':id/outreach/:donorId') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  setOutreach(@Param('id', ParseIntPipe) id: number, @Param('donorId', ParseIntPipe) donorId: number, @Body() dto: OutreachDto) { return this.service.setOutreach(id, donorId, dto); }
   @Post(':id/fulfill') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   fulfill(@Param('id', ParseIntPipe) id: number) { return this.service.close(id, RequestStatus.FULFILLED); }
   @Post(':id/cancel') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)

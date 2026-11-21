@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { BloodGroup, RequestUrgency } from '@prisma/client';
+import { BloodGroup, OutreachStatus, RequestUrgency } from '@prisma/client';
 import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateRequestDto {
@@ -16,4 +16,8 @@ export class CreateRequestDto {
 
 export class MatchQueryDto {
   @ApiProperty({ required: false, default: 50 }) @IsOptional() @Type(() => Number) @IsNumber() @Min(1) @Max(200) maxDistanceKm?: number;
+}
+
+export class OutreachDto {
+  @ApiProperty({ enum: OutreachStatus }) @IsEnum(OutreachStatus) status: OutreachStatus;
 }

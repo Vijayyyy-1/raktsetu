@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ArrowLeft, Building2, Check, CheckCircle2, Loader2, Lock, Mail, Phone } from "lucide-react"
+import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, Loader2, Lock, Mail, Phone } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { BloodChip, Btn, Drop, EstimateNote, SPRING, UrgencyTag, VerifiedTag, fadeUp } from "@/components/bits"
-import { api, requestLabel, type LiveRequest, type Match } from "@/api"
+import { api, requestLabel, type LiveRequest, type Match, type Outreach, type OutreachStatus } from "@/api"
 import { CAN_RECEIVE, maskPhone } from "@/data"
-import { Countdown } from "./Requests"
+import { Countdown, Progress } from "./Requests"
 import { cn } from "@/lib/utils"
 
 const MAX_KM = 50
@@ -20,6 +21,19 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
   const [revealed, setRevealed] = useState<Record<number, true>>({})
   const [closing, setClosing] = useState(false)
   const [done, setDone] = useState(false)
+  const [outreach, setOutreach] = useState<Outreach[]>([])
+  const status = Object.fromEntries(outreach.map((o) => [o.donorId, o.status])) as Record<number, OutreachStatus>
+
+  useEffect(() => void api.outreach(req.id).then(setOutreach).catch((e) => toast.error(e.message)), [req.id])
+
+  const track = async (d: Match, next: OutreachStatus) => {
+    try {
+      onChange(await api.setOutreach(req.id, d.donorId, next))
+      setOutreach(await api.outreach(req.id))
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
 
   useEffect(() => {
     let live = true
@@ -39,6 +53,9 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
       setClosing(false)
     }
   }
+
+  const worked = outreach.filter((o) => !matches?.some((m) => m.donorId === o.donorId)).map((o) => ({ ...o, eligibility: "" }))
+  const list: Match[] = [...(matches ?? []), ...worked]
 
   const checks = [
     `Blood group can give to ${req.group} (${CAN_RECEIVE[req.group].join(", ")})`,
@@ -108,15 +125,17 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
             )}
           </div>
 
+          <Progress req={req} />
+
           {matches === null ? (
             <div className="space-y-2">
               {[0, 1, 2, 3].map((i) => <div key={i} className="h-[68px] animate-pulse rounded-2xl bg-muted" style={{ animationDelay: `${i * 120}ms` }} />)}
             </div>
-          ) : matches.length === 0 ? (
+          ) : list.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground">No one eligible within {query} km yet — try widening the radius.</div>
           ) : (
             <motion.ul layout className="space-y-2">
-              {matches.map((d, i) => (
+              {list.map((d, i) => (
                 <motion.li
                   key={d.donorId}
                   layout
@@ -130,6 +149,7 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
                     <div className="truncate font-semibold">{d.name} <span className="ml-1 text-xs font-medium text-blood">{d.group}</span></div>
                     <div className="truncate text-xs text-muted-foreground">{d.area} · {d.km} km away</div>
                   </div>
+                  <StatusPicker value={status[d.donorId]} onPick={(s) => track(d, s)} />
                   {revealed[d.donorId] ? (
                     <div className="text-right text-sm">
                       <a href={`tel:${d.phone}`} className="flex items-center justify-end gap-1.5 font-semibold text-ok hover:underline"><Phone className="h-3.5 w-3.5" />{d.phone}</a>
@@ -179,6 +199,31 @@ export function Matches({ req, now, onBack, onChange }: { req: LiveRequest; now:
         )}
       </AnimatePresence>
     </motion.div>
+  )
+}
+
+const STATUS: Record<OutreachStatus, { label: string; tone: string }> = {
+  called: { label: "Called", tone: "bg-white text-foreground" },
+  no_answer: { label: "No answer", tone: "bg-peach text-[#7a3a14]" },
+  coming: { label: "Coming", tone: "bg-blood text-white" },
+  declined: { label: "Declined", tone: "bg-muted text-muted-foreground line-through" },
+  donated: { label: "Donated", tone: "bg-ok text-white" },
+}
+
+function StatusPicker({ value, onPick }: { value?: OutreachStatus; onPick: (s: OutreachStatus) => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label="Outreach status" className={cn("inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-xs font-semibold shadow-sm", value ? STATUS[value].tone : "bg-white text-muted-foreground")}>
+        {value ? STATUS[value].label : "Mark"} <ChevronDown className="h-3 w-3" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="rounded-2xl p-1.5">
+        {(Object.keys(STATUS) as OutreachStatus[]).map((s) => (
+          <DropdownMenuItem key={s} className="rounded-xl" onClick={() => onPick(s)}>
+            {value === s && <Check className="h-3.5 w-3.5" />}{STATUS[s].label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
