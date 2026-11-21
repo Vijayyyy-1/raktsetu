@@ -22,6 +22,18 @@ The frontend is the RaktSetu Vite/React app in [`frontend/`](frontend/) on `http
 
 The demo coordinator email/password are controlled by `COORDINATOR_EMAIL` and `COORDINATOR_PASSWORD` in `backend/.env`. Fictional donor demo accounts use `anaya@example.test`, `rohan@example.test`, `meera@example.test`, and `kabir@example.test`, with password `DonorDemo123!`.
 
+## Run without Docker (database only in Docker)
+
+1. Start just Postgres: `docker compose -f docker/docker-compose.yml up -d db`
+2. Create `backend/.env.host` (git-ignored) with host overrides:
+   ```
+   DATABASE_URL=postgresql://<user>:<password>@localhost:5433/blood_donation?schema=public
+   PORT=3001
+   WEB_ORIGIN=http://localhost:5173
+   ```
+3. API: `cd backend && npm run start:local` → loads `.env`, `.env.local`, then `.env.host`
+4. Frontend: `cd frontend && pnpm dev` (`frontend/.env` points at `http://localhost:3001/v1`)
+
 ## API outline
 
 | Method | Path | Access | Purpose |
