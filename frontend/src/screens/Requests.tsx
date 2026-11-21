@@ -60,13 +60,21 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   }, [readOnly])
   // Coordinator: eligible-donor coverage per request; refetched whenever the set of requests changes.
   const [supply, setSupply] = useState<Record<number, Supply>>({})
-  const ids = (requests ?? []).map((r) => r.id).join()
   useEffect(() => {
     if (readOnly || !ids) return
     api.supply().then((rows) => setSupply(Object.fromEntries(rows.map((r) => [r.id, r])))).catch(() => {})
   }, [readOnly, ids])
   const setResponse = (id: number, s: OutreachStatus | null) => setResponses(({ [id]: _, ...rest }) => (s ? { ...rest, [id]: s } : rest))
   const all = requests ?? []
+  const ids = all.map((r) => r.id).join()
+  // Coordinator: closed history from the API (last 30 days) plus anything closed or expired in this session.
+  const [history, setHistory] = useState<LiveRequest[]>([])
+  useEffect(() => {
+    if (readOnly || tab !== "closed") return
+    api.closedRequests().then(setHistory).catch((e) => toast.error(e.message))
+  }, [readOnly, tab, ids])
+  const sessionClosed = all.filter((r) => statusOf(r, now) !== "open")
+  const closed = [...sessionClosed.filter((r) => !history.some((h) => h.id === r.id)), ...history]
   const active = all.filter((r) => statusOf(r, now) === "open")
   // Donors see verified needs only, nearest first; "mine" narrows to groups their blood can serve.
   const feed = active
@@ -82,10 +90,10 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   const pickFilter = (f: Filter) => (setFilter((cur) => (cur === f ? null : f)), setTab("active"))
   const shown: { r: LiveRequest; km?: number; canGive?: boolean }[] = readOnly
     ? tab === "mine" ? mine : feed
-    : (tab === "active" ? triage : all.filter((r) => statusOf(r, now) !== "open")).map((r) => ({ r }))
+    : (tab === "active" ? triage : closed).map((r) => ({ r }))
   const tabs: { id: Tab; label: string }[] = readOnly
     ? [{ id: "mine", label: `You can donate · ${mine.length}` }, { id: "all", label: `All groups · ${feed.length}` }]
-    : [{ id: "active", label: `Open · ${active.length}` }, { id: "closed", label: `Closed this session · ${all.length - active.length}` }]
+    : [{ id: "active", label: `Open · ${active.length}` }, { id: "closed", label: tab === "closed" ? `Closed · ${closed.length}` : "Closed" }]
 
   return (
     <motion.div {...fadeUp} className="space-y-8">
@@ -145,6 +153,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   )
 }
 
+const span = (ms: number) => { const m = Math.max(1, Math.round(ms / 60000)); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)} days` }
 const posted = (ms: number) => { const m = Math.floor(ms / 60000); return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago` }
 
 /** Eligible-donor coverage: red when nobody is within 25 km, amber when 10 km has fewer than two. */
@@ -257,6 +266,16 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
       )}
 
       {!readOnly && isOpen && supply && <SupplyLine s={supply} />}
+
+      {!isOpen && (
+        <div className="mt-4 rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          {status === "fulfilled" ? "Filled" : status === "cancelled" ? "Cancelled" : "Expired"}
+          {" "}{posted(now - (status === "expired" ? r.expiresAt : r.closedAt ?? now))}
+          {status === "fulfilled" && r.closedAt && <> · took {span(r.closedAt - r.createdAt)}</>}
+          {r.donated > 0 && <> · {r.donated} donated</>}
+          {r.verifiedBy && <> · verified by {r.verifiedBy}</>}
+        </div>
+      )}
 
       {!readOnly && isOpen && r.coming + r.donated > 0 && <div className="mt-4"><Progress req={r} compact /></div>}
 

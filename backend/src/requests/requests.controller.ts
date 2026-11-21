@@ -9,6 +9,8 @@ import { RequestsService } from './requests.service';
 export class RequestsController {
   constructor(private service: RequestsService) {}
   @Get() list() { return this.service.listActive(); }
+  @Get('closed') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
+  closed() { return this.service.listClosed(); }
   @Get('supply') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.COORDINATOR)
   supply() { return this.service.supply(); }
   @Get('responses/me') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Roles(UserRole.DONOR)

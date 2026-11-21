@@ -38,6 +38,17 @@ export class RequestsService {
       return { id: r.id, within10: km.filter((k) => k <= 10).length, within25: km.filter((k) => k <= 25).length };
     });
   }
+  // Closed history for coordinators: fulfilled, cancelled or expired in the last 30 days, newest first.
+  async listClosed() {
+    await this.prisma.bloodRequest.updateMany({ where: { status: RequestStatus.OPEN, expiresAt: { lte: new Date() } }, data: { status: RequestStatus.EXPIRED } });
+    const since = new Date(Date.now() - 30 * 86400000);
+    const rows = await this.prisma.bloodRequest.findMany({
+      where: { status: { not: RequestStatus.OPEN }, updatedAt: { gte: since } },
+      select: { ...publicFields, status: true, updatedAt: true, verifiedBy: { select: { email: true } } },
+      orderBy: { updatedAt: 'desc' }, take: 100,
+    });
+    return this.withProgress(rows.map(({ updatedAt, verifiedBy, ...r }) => ({ ...r, closedAt: updatedAt, verifiedBy: verifiedBy?.email ?? null })));
+  }
   async get(id: number) {
     const request = await this.prisma.bloodRequest.findFirst({ where: { id, status: RequestStatus.OPEN, expiresAt: { gt: new Date() } }, select: publicFields });
     if (!request) throw new NotFoundException('Active request not found');

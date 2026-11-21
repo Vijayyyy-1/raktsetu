@@ -49,6 +49,8 @@ export type LiveRequest = {
   responded: number // donors who raised their hand in the app
   coming: number // donors who said they're coming
   donated: number // donors who have donated for this request
+  closedAt?: number
+  verifiedBy?: string | null
 }
 export type Supply = { id: number; within10: number; within25: number }
 export type OutreachStatus = "responded" | "called" | "no_answer" | "coming" | "declined" | "donated"
@@ -68,11 +70,12 @@ export type DonorProfile = {
 export type Donation = { id: number; donatedAt: string }
 export type Eligibility ={ eligible: boolean; nextEligibleAt: string | null; reason: string; rule: string }
 
-type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string; createdAt: string; responded?: number; coming?: number; donated?: number }
-const toRequest = (r: ApiRequest, status: RequestStatus = "open"): LiveRequest => ({
+type ApiRequest = { id: number; bloodGroup: ApiGroup; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: keyof typeof URG; verified: boolean; expiresAt: string; createdAt: string; responded?: number; coming?: number; donated?: number; status?: string; closedAt?: string; verifiedBy?: string | null }
+const toRequest = (r: ApiRequest, status: RequestStatus = (r.status?.toLowerCase() as RequestStatus) ?? "open"): LiveRequest => ({
   id: r.id, group: toGroup(r.bloodGroup), units: r.units, hospital: r.hospitalName, area: r.area, lat: r.latitude, lng: r.longitude,
   urgency: URG[r.urgency], verified: r.verified, expiresAt: Date.parse(r.expiresAt), createdAt: Date.parse(r.createdAt), status,
   responded: r.responded ?? 0, coming: r.coming ?? 0, donated: r.donated ?? 0,
+  ...(r.closedAt ? { closedAt: Date.parse(r.closedAt), verifiedBy: r.verifiedBy } : {}),
 })
 type ApiDonor = { id: number; displayName: string; bloodGroup: ApiGroup; area: string; latitude: number; longitude: number; available: boolean; phone: string; lastDonationAt: string | null }
 const toDonor = (d: ApiDonor): DonorProfile => ({ id: d.id, name: d.displayName, group: toGroup(d.bloodGroup), area: d.area, lat: d.latitude, lng: d.longitude, available: d.available, phone: d.phone, lastDonationAt: d.lastDonationAt })
@@ -112,6 +115,7 @@ export const api = {
       .map((o) => ({ donorId: o.donorId, name: o.displayName, group: toGroup(o.bloodGroup), area: o.area, km: o.distanceKm, email: o.email, phone: o.phone, status: o.status.toLowerCase() as OutreachStatus, updatedAt: Date.parse(o.updatedAt) })),
   setOutreach: async (id: number, donorId: number, status: OutreachStatus) =>
     toRequest(await call<ApiRequest>("PUT", `/blood-requests/${id}/outreach/${donorId}`, { status: status.toUpperCase() })),
+  closedRequests: async () => (await call<ApiRequest[]>("GET", "/blood-requests/closed")).map((r) => toRequest(r)),
   supply: () => call<Supply[]>("GET", "/blood-requests/supply"),
   // Donor side: "I can come"
   respond: async (id: number) => toRequest(await call<ApiRequest>("POST", `/blood-requests/${id}/respond`)),
