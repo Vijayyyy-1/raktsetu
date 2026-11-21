@@ -88,26 +88,28 @@ export function Donors() {
 
       {/* Supply by blood group */}
       <section>
-        <h2 className="mb-3 text-2xl font-medium">Supply by blood group</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className="text-2xl font-medium">Supply by blood group</h2>
+          <span className="text-xs text-muted-foreground">ready now / registered · tap a group to filter the list</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {(stats?.byGroup ?? []).map((g, i) => {
             const short = isShort(g)
             return (
-              <motion.button key={g.group} {...popIn(i)} onClick={() => setGroup(group === g.group ? undefined : g.group)}
-                className={cn("rounded-[22px] p-4 text-left shadow-[0_10px_30px_-16px_hsl(0_60%_40%/0.25)] ring-2 transition-all", short ? "bg-blood-soft" : "bg-white", group === g.group ? "ring-foreground" : "ring-transparent hover:ring-blood/20")}>
-                <div className="flex items-center justify-between">
-                  <BloodChip group={g.group} size="sm" />
-                  {short && <span className="pill bg-blood py-0.5 text-white">Short</span>}
-                </div>
-                <div className="mt-3 font-display text-3xl font-medium tabular-nums">{g.eligible}<span className="text-base text-muted-foreground"> / {g.total}</span></div>
-                <div className="text-xs text-muted-foreground">ready now</div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/70">
-                  <motion.div className="h-full rounded-full bg-gradient-to-r from-[#FF7B72] to-[#C9303F]" initial={{ width: 0 }} animate={{ width: `${g.total ? (g.eligible / g.total) * 100 : 0}%` }} transition={SPRING} />
+              <motion.button key={g.group} {...popIn(i)} onClick={() => setGroup(group === g.group ? undefined : g.group)} aria-pressed={group === g.group}
+                className={cn("relative flex items-center gap-3 rounded-2xl p-3 text-left shadow-[0_10px_30px_-16px_hsl(0_60%_40%/0.25)] ring-2 transition-all", short ? "bg-blood-soft" : "bg-white", group === g.group ? "ring-foreground" : "ring-transparent hover:ring-blood/20")}>
+                {short && <span className="pill absolute -top-2 right-2 bg-blood px-2 py-0 text-[10px] text-white">Short</span>}
+                <BloodChip group={g.group} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-display text-2xl font-medium leading-none tabular-nums">{g.eligible}<span className="text-sm text-muted-foreground">/{g.total}</span></div>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
+                    <motion.div className="h-full rounded-full bg-gradient-to-r from-[#FF7B72] to-[#C9303F]" initial={{ width: 0 }} animate={{ width: `${g.total ? (g.eligible / g.total) * 100 : 0}%` }} transition={SPRING} />
+                  </div>
                 </div>
               </motion.button>
             )
           })}
-          {!stats && [0, 1, 2, 3].map((i) => <div key={i} className="h-36 animate-pulse rounded-[22px] bg-white/60" />)}
+          {!stats && [0, 1, 2, 3, 4, 5, 6, 7].map((i) => <div key={i} className="h-[60px] animate-pulse rounded-2xl bg-white/60" />)}
         </div>
       </section>
 
