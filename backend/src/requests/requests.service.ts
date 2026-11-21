@@ -3,7 +3,8 @@ import { BloodRequest, OutreachStatus, RequestStatus, UserRole } from '@prisma/c
 import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
 import { decrypt } from '../common/crypto';
-import { compatibleDonorGroups, distanceKm, eligible } from '../common/matching';
+import { ALERT_KM, compatibleDonorGroups, distanceKm, eligible } from '../common/matching';
+import { sendPush } from '../common/push';
 import { CreateRequestDto, OutreachDto, UpdateRequestDto } from './requests.dto';
 
 const publicFields = { id: true, bloodGroup: true, units: true, hospitalName: true, area: true, latitude: true, longitude: true, urgency: true, verified: true, expiresAt: true, createdAt: true, unitsReceived: true } as const;
@@ -15,6 +16,7 @@ const approx = (n: number) => Math.round(n * 100) / 100;
 @Injectable()
 export class RequestsService {
   private audit = new Logger('ContactAudit');
+  private push = new Logger('Push');
   constructor(private prisma: PrismaService) {}
   // Attach outreach progress (donors coming / donated) so every response carries the same shape.
   private async withProgress<T extends PublicRequest>(requests: T[]) {
@@ -83,7 +85,24 @@ export class RequestsService {
   async verify(id: number, user: AuthUser) {
     const request = await this.requestOrFail(id);
     if (request.status !== RequestStatus.OPEN) throw new BadRequestException('Request is not open');
-    return this.one(await this.prisma.bloodRequest.update({ where: { id }, data: { verified: true, verifiedById: Number(user.sub), verifiedAt: new Date() }, select: publicFields }));
+    const verified = await this.prisma.bloodRequest.update({ where: { id }, data: { verified: true, verifiedById: Number(user.sub), verifiedAt: new Date() }, select: publicFields });
+    // Fire and forget: a push failure must never fail the verification.
+    if (!request.verified) void this.notifyDonors(verified).catch((e) => this.push.error(`Push for request ${id} failed: ${e}`));
+    return this.one(verified);
+  }
+  // Same audience as in-app alerts: available, active, estimated-eligible donors within ALERT_KM whose blood can serve.
+  private async notifyDonors(r: { id: number; bloodGroup: BloodRequest['bloodGroup']; units: number; hospitalName: string; area: string; latitude: number; longitude: number; urgency: BloodRequest['urgency'] }) {
+    const donors = await this.prisma.donor.findMany({
+      where: { pushToken: { not: null }, available: true, bloodGroup: { in: compatibleDonorGroups(r.bloodGroup) }, account: { isActive: true, role: UserRole.DONOR } },
+      select: { pushToken: true, latitude: true, longitude: true, lastDonationAt: true },
+    });
+    const tokens = donors
+      .filter((d) => eligible(d.lastDonationAt) && distanceKm(r.latitude, r.longitude, d.latitude, d.longitude) <= ALERT_KM)
+      .map((d) => d.pushToken!);
+    const group = r.bloodGroup.replace('_POSITIVE', '+').replace('_NEGATIVE', '-');
+    const title = `${r.urgency === 'CRITICAL' ? 'Critical: ' : ''}${group} blood needed near you`;
+    const dead = await sendPush(tokens, title, `${r.units} unit${r.units === 1 ? '' : 's'} at ${r.hospitalName}, ${r.area}. Tap if you can donate.`, { requestId: String(r.id), type: 'request' });
+    if (dead.length) await this.prisma.donor.updateMany({ where: { pushToken: { in: dead } }, data: { pushToken: null } });
   }
   // Aggregate outcomes for the last 30 days. Counts only, so it is safe to show publicly.
   async impact() {

@@ -4,10 +4,9 @@ import { PrismaService } from '../prisma.service';
 import { AuthUser } from '../common/auth';
 import { decrypt, encrypt } from '../common/crypto';
 import { BloodGroup, RequestStatus } from '@prisma/client';
-import { compatibleDonorGroups, distanceKm, eligible, DONATION_WAIT_DAYS } from '../common/matching';
+import { ALERT_KM, compatibleDonorGroups, distanceKm, eligible, DONATION_WAIT_DAYS } from '../common/matching';
 import { CreateDonationDto, UpdateDonorDto } from './donors.dto';
 
-const ALERT_KM = 15;
 
 @Injectable()
 export class DonorsService {
@@ -74,6 +73,13 @@ export class DonorsService {
       .map((r) => ({ ...r, distanceKm: Math.round(distanceKm(donor.latitude, donor.longitude, r.latitude, r.longitude) * 10) / 10, unread: !donor.alertsSeenAt || (r.verifiedAt ?? now) > donor.alertsSeenAt }))
       .filter((r) => r.distanceKm <= ALERT_KM);
     return { unread: alerts.filter((a) => a.unread).length, alerts };
+  }
+  // The phone's FCM token; a token moving to a new account is taken off the old one so pushes never reach the wrong donor.
+  async setPushToken(user: AuthUser, token: string | null) {
+    const donor = await this.mine(user);
+    if (token) await this.prisma.donor.updateMany({ where: { pushToken: token, id: { not: donor.id } }, data: { pushToken: null } });
+    await this.prisma.donor.update({ where: { id: donor.id }, data: { pushToken: token } });
+    return { ok: true };
   }
   async markAlertsSeen(user: AuthUser) {
     const donor = await this.mine(user);

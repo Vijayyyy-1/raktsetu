@@ -7,6 +7,10 @@ export class CreateDonationDto {
   @ApiProperty() @IsDateString() donatedAt: string;
 }
 
+export class PushTokenDto {
+  @ApiProperty() @IsString() @Matches(/^[\w:.-]{20,4096}$/) token: string;
+}
+
 export class UpdateDonorDto {
   @ApiPropertyOptional() @IsOptional() @Trim() @IsString() @MinLength(2) @MaxLength(60) displayName?: string;
   @ApiPropertyOptional() @IsOptional() @Trim() @IsString() @MinLength(2) @MaxLength(80) area?: string;

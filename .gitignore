@@ -8,3 +8,7 @@ coverage/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Firebase config and service-account keys (never commit)
+google-services.json
+firebase-service-account*.json
