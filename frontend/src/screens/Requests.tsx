@@ -17,6 +17,9 @@ import { cn } from "@/lib/utils"
 export const statusOf = (r: LiveRequest, now: number): RequestStatus => (r.status === "open" && r.expiresAt <= now ? "expired" : r.status)
 
 const WINDOW: Record<Urgency, number> = { critical: 2, urgent: 6, planned: 24 } // hours until auto-expiry
+// Donor feed radii: "For you" uses the same 15 km as alerts (backend ALERT_KM); sharing reaches further than you'd travel.
+const NEAR_KM = 15
+const SHARE_KM = 50
 
 export function Countdown({ at, now, className }: { at: number; now: number; className?: string }) {
   const s = Math.max(0, Math.floor((at - now) / 1000))
@@ -75,12 +78,14 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
   const sessionClosed = all.filter((r) => statusOf(r, now) !== "open")
   const closed = [...sessionClosed.filter((r) => !history.some((h) => h.id === r.id)), ...history]
   const active = all.filter((r) => statusOf(r, now) === "open")
-  // Donors see verified needs only, nearest first; "mine" narrows to groups their blood can serve.
+  // Donors see verified needs only, nearest first. "For you": their blood can serve it and it's within alert range.
+  // "Spread the word": anything within sharing range. No saved location → no distance filter.
   const feed = active
     .filter((r) => r.verified)
     .map((r) => ({ r, km: me ? Math.round(distanceKm(me.lat, me.lng, r.lat, r.lng) * 10) / 10 : undefined, canGive: !!me && CAN_RECEIVE[r.group].includes(me.group) }))
+    .filter((f) => f.km === undefined || f.km <= SHARE_KM)
     .sort((a, b) => (a.km ?? 0) - (b.km ?? 0))
-  const mine = feed.filter((f) => f.canGive)
+  const mine = feed.filter((f) => f.canGive && (f.km === undefined || f.km <= NEAR_KM))
   // Coordinator triage: tiles filter the open list; unverified first (they block matching), then soonest to close.
   const [filter, setFilter] = useState<Filter | null>(null)
   const triage = active
@@ -91,7 +96,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
     ? tab === "mine" ? mine : feed
     : (tab === "active" ? triage : closed).map((r) => ({ r }))
   const tabs: { id: Tab; label: string }[] = readOnly
-    ? [{ id: "mine", label: `You can donate · ${mine.length}` }, { id: "all", label: `All groups · ${feed.length}` }]
+    ? [{ id: "mine", label: `For you · ${mine.length}` }, { id: "all", label: `Help spread the word · ${feed.length}` }]
     : [{ id: "active", label: `Open · ${active.length}` }, { id: "closed", label: tab === "closed" ? `Closed · ${closed.length}` : "Closed" }]
 
   return (
@@ -99,7 +104,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
       <SectionHead
         kicker={readOnly ? "Near you" : "Coordinator desk"}
         title={readOnly ? <>Who needs <span className="italic text-blood">help</span> today</> : <>{active.length} {active.length === 1 ? "request is" : "requests are"} <span className="italic text-blood">open</span></>}
-        sub={readOnly ? (tab === "mine" ? `Verified needs your ${me?.group ?? ""} blood can serve. No patient names or diagnoses, ever.` : "Every verified need — share one with family or friends who can help.") : undefined}
+        sub={readOnly ? (tab === "mine" ? `Verified needs within ${NEAR_KM} km that your ${me?.group ?? ""} blood can serve. No patient names or diagnoses, ever.` : `Every verified need within ${SHARE_KM} km. Can't give to one? Share it with family or friends who can.`) : undefined}
       >
         <div className="flex gap-2">
           <Btn variant="ghost" size="lg" onClick={onRefresh} aria-label="Refresh"><RefreshCw className="h-4 w-4" /></Btn>
@@ -156,7 +161,7 @@ export function Requests({ requests, now, onChange, onRefresh, onMatch, readOnly
               <RequestCard key={r.id} i={i} r={r} km={km} canGive={canGive} supply={supply[r.id]} response={responses[r.id]} onResponse={(s) => setResponse(r.id, s)} now={now} readOnly={readOnly} onChange={change} onMatch={onMatch} />
             ))}
           </AnimatePresence>
-          {shown.length === 0 && <p className="col-span-full py-12 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? "Nothing for your group right now — check All groups." : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
+          {shown.length === 0 && <p className="col-span-full py-12 text-center font-display text-2xl italic text-muted-foreground">{readOnly && tab === "mine" && feed.length ? `Nothing within ${NEAR_KM} km for your blood group right now — see Help spread the word.` : readOnly && tab === "mine" ? `No verified requests within ${NEAR_KM} km right now. We'll alert you when one comes in.` : !readOnly && filter && tab === "active" ? "Nothing matches this filter right now." : "All quiet here."}</p>}
         </motion.div>
       )}
 
@@ -271,7 +276,7 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <VerifiedTag verified={r.verified} />
           {!readOnly && isOpen && r.responded > 0 && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">✋ {r.responded} raised {r.responded === 1 ? "a hand" : "hands"}</span>}
-          {readOnly && canGive === false && <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Not your blood group</span>}
+
         </div>
       </div>
 
@@ -320,8 +325,13 @@ function RequestCard({ r, i, now, km, canGive, supply, response, onResponse, rea
         )
       )}
 
-        <Btn variant="soft" className="w-full" onClick={() => share(r, now)}>
-          <Share2 className="h-4 w-4" /> Share with family
+        {canGive === false && (
+          <p className="rounded-2xl bg-blood-soft/60 px-4 py-2.5 text-sm text-foreground">
+            Not your blood group. Know someone who's <b>{CAN_RECEIVE[r.group].length === 8 ? "any blood group" : CAN_RECEIVE[r.group].join(", ")}</b>? Send this to them.
+          </p>
+        )}
+        <Btn variant={canGive === false ? "primary" : "soft"} className="w-full" onClick={() => share(r, now)}>
+          <Share2 className="h-4 w-4" /> {canGive === false ? "Share with someone who can give" : "Share with family"}
         </Btn>
         </div>
       )}
