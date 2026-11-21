@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  DONOR
+  COORDINATOR
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+enum RequestUrgency {
+  ROUTINE
+  URGENT
+  CRITICAL
+}
+
+enum RequestStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+model Account {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(DONOR)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  donor        Donor?
+  createdRequests BloodRequest[] @relation("RequestCreator")
+  verifiedRequests BloodRequest[] @relation("RequestVerifier")
+}
+
+model Donor {
+  id             Int        @id @default(autoincrement())
+  accountId      Int        @unique
+  displayName    String
+  bloodGroup     BloodGroup
+  phoneEncrypted String
+  area           String
+  latitude       Float
+  longitude      Float
+  available      Boolean    @default(true)
+  lastDonationAt DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  account        Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([bloodGroup, available])
+}
+
+model BloodRequest {
+  id                Int           @id @default(autoincrement())
+  bloodGroup        BloodGroup
+  units             Int           @default(1)
+  hospitalName      String
+  area              String
+  latitude          Float
+  longitude         Float
+  urgency           RequestUrgency @default(URGENT)
+  status            RequestStatus @default(OPEN)
+  verified          Boolean       @default(false)
+  expiresAt         DateTime
+  createdById       Int
+  verifiedById      Int?
+  verifiedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  createdBy         Account       @relation("RequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  verifiedBy        Account?      @relation("RequestVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt, bloodGroup])
+}
